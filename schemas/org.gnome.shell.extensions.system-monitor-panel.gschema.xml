@@ -34,6 +34,36 @@
       <description>Whether to show device temperature in the panel.</description>
     </key>
 
+    <key name="show-network" type="b">
+      <default>true</default>
+      <summary>Show network speed</summary>
+      <description>Whether to show network download/upload speed in the panel.</description>
+    </key>
+
+    <key name="show-cpu-card" type="b">
+      <default>true</default>
+      <summary>Show CPU card</summary>
+      <description>Whether to show the CPU card in the dropdown menu.</description>
+    </key>
+
+    <key name="show-memory-card" type="b">
+      <default>true</default>
+      <summary>Show memory card</summary>
+      <description>Whether to show the memory card in the dropdown menu.</description>
+    </key>
+
+    <key name="show-temperature-card" type="b">
+      <default>true</default>
+      <summary>Show temperature card</summary>
+      <description>Whether to show the temperature card in the dropdown menu.</description>
+    </key>
+
+    <key name="show-network-card" type="b">
+      <default>true</default>
+      <summary>Show network card</summary>
+      <description>Whether to show the network card in the dropdown menu.</description>
+    </key>
+
     <key name="show-icons" type="b">
       <default>true</default>
       <summary>Show icons</summary>

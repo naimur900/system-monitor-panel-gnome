@@ -1,11 +1,9 @@
 {
-    "uuid": "system-monitor-panel@naimur",
-    "name": "System Monitor Panel",
-    "description": "Shows CPU usage, memory usage, and device temperature in the top panel with detailed dropdown",
-    "shell-version": [
-        "50"
-    ],
-    "version": 2,
-    "settings-schema": "org.gnome.shell.extensions.system-monitor-panel",
-    "url": "https://github.com/naimur/system-monitor-panel"
+  "uuid": "system-monitor-panel@naimur",
+  "name": "System Monitor Panel",
+  "description": "Shows CPU usage, memory usage, network usage and device temperature in the top panel with detailed dropdown",
+  "shell-version": ["50"],
+  "version": 2,
+  "settings-schema": "org.gnome.shell.extensions.system-monitor-panel",
+  "url": "https://github.com/naimur/system-monitor-panel"
 }

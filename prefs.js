@@ -74,9 +74,9 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         tempUnitRow.set_activatable_widget(tempUnitDropdown);
         generalGroup.add(tempUnitRow);
 
-        // ── Visibility Group ──
+        // ── Top Panel Visibility Group ──
         const visGroup = new Adw.PreferencesGroup({
-            title: 'Panel Visibility',
+            title: 'Top Panel',
             description: 'Choose which metrics appear in the top panel',
         });
         page.add(visGroup);
@@ -119,6 +119,78 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
             Gio.SettingsBindFlags.DEFAULT
         );
         visGroup.add(tempRow);
+
+        // Show Network
+        const netRow = new Adw.SwitchRow({
+            title: 'Show Network Speed',
+            subtitle: 'Display network download/upload speed in the panel',
+        });
+        settings.bind(
+            'show-network',
+            netRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        visGroup.add(netRow);
+
+        // ── Dropdown Menu Cards Group ──
+        const cardGroup = new Adw.PreferencesGroup({
+            title: 'Dropdown Menu Cards',
+            description: 'Choose which detail cards appear in the dropdown menu',
+        });
+        page.add(cardGroup);
+
+        // Show CPU Card
+        const cpuCardRow = new Adw.SwitchRow({
+            title: 'Show CPU Card',
+            subtitle: 'Display the CPU usage card in the dropdown',
+        });
+        settings.bind(
+            'show-cpu-card',
+            cpuCardRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        cardGroup.add(cpuCardRow);
+
+        // Show Memory Card
+        const memCardRow = new Adw.SwitchRow({
+            title: 'Show Memory Card',
+            subtitle: 'Display the memory usage card in the dropdown',
+        });
+        settings.bind(
+            'show-memory-card',
+            memCardRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        cardGroup.add(memCardRow);
+
+        // Show Temperature Card
+        const tempCardRow = new Adw.SwitchRow({
+            title: 'Show Temperature Card',
+            subtitle: 'Display the temperature card in the dropdown',
+        });
+        settings.bind(
+            'show-temperature-card',
+            tempCardRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        cardGroup.add(tempCardRow);
+
+        // Show Network Card
+        const netCardRow = new Adw.SwitchRow({
+            title: 'Show Network Card',
+            subtitle: 'Display the network speed card in the dropdown',
+        });
+        settings.bind(
+            'show-network-card',
+            netCardRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        cardGroup.add(netCardRow);
 
         // ── Display Group ──
         const displayGroup = new Adw.PreferencesGroup({

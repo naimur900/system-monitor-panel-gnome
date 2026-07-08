@@ -46,6 +46,30 @@ function formatBytes(kB) {
 }
 
 /**
+ * Format a network speed given in bytes/second to a human-readable string.
+ */
+function formatSpeed(bytesPerSec) {
+    const b = Math.max(0, bytesPerSec);
+    if (b >= 1048576)
+        return `${(b / 1048576).toFixed(1)} MB/s`;
+    if (b >= 1024)
+        return `${(b / 1024).toFixed(0)} KB/s`;
+    return `${Math.round(b)} B/s`;
+}
+
+/**
+ * Compact speed string for the tight panel area (e.g. "1.2M", "340K").
+ */
+function formatSpeedCompact(bytesPerSec) {
+    const b = Math.max(0, bytesPerSec);
+    if (b >= 1048576)
+        return `${(b / 1048576).toFixed(1)}M`;
+    if (b >= 1024)
+        return `${Math.round(b / 1024)}K`;
+    return `${Math.round(b)}B`;
+}
+
+/**
  * Get a CSS class name based on a usage percentage threshold.
  */
 function thresholdClass(percent) {
@@ -95,10 +119,7 @@ const TEMP_FRIENDLY_NAMES = {
 };
 
 function friendlyTempName(raw) {
-    if (TEMP_FRIENDLY_NAMES[raw])
-        return TEMP_FRIENDLY_NAMES[raw];
-    // Strip trailing digits from generic sensor ids (e.g. "SEN1")
-    return raw;
+    return TEMP_FRIENDLY_NAMES[raw] || raw;
 }
 
 /**
@@ -115,6 +136,9 @@ class SystemMetrics {
     constructor() {
         this._prevCpuTotal = [];
         this._prevCpuIdle = [];
+        this._prevRx = 0;
+        this._prevTx = 0;
+        this._prevNetTime = 0;
     }
 
     /**
@@ -210,6 +234,59 @@ class SystemMetrics {
         const swapPercent = swapTotal > 0 ? (swapUsed / swapTotal) * 100 : 0;
 
         return {percent, total, available, used, free, buffers, cached, swapTotal, swapUsed, swapPercent};
+    }
+
+    /**
+     * Read aggregate network throughput from /proc/net/dev.
+     * Speeds are computed from the byte delta over the elapsed wall-clock time,
+     * so they stay correct regardless of how often this is polled.
+     * Returns { rxSpeed, txSpeed } in bytes/second and { rxTotal, txTotal } in bytes.
+     */
+    getNetworkSpeed() {
+        const data = readFile('/proc/net/dev');
+        const now = GLib.get_monotonic_time(); // microseconds
+        if (!data)
+            return {rxSpeed: 0, txSpeed: 0, rxTotal: 0, txTotal: 0};
+
+        let rxTotal = 0;
+        let txTotal = 0;
+        for (const line of data.split('\n')) {
+            const idx = line.indexOf(':');
+            if (idx === -1)
+                continue;
+
+            const iface = line.slice(0, idx).trim();
+            // Skip the loopback interface — it's not real traffic.
+            if (iface === 'lo')
+                continue;
+
+            const parts = line.slice(idx + 1).trim().split(/\s+/);
+            if (parts.length < 9)
+                continue;
+
+            const rx = parseInt(parts[0], 10);  // received bytes
+            const tx = parseInt(parts[8], 10);  // transmitted bytes
+            if (!isNaN(rx))
+                rxTotal += rx;
+            if (!isNaN(tx))
+                txTotal += tx;
+        }
+
+        let rxSpeed = 0;
+        let txSpeed = 0;
+        if (this._prevNetTime > 0) {
+            const dt = (now - this._prevNetTime) / 1e6; // seconds
+            if (dt > 0) {
+                rxSpeed = Math.max(0, (rxTotal - this._prevRx) / dt);
+                txSpeed = Math.max(0, (txTotal - this._prevTx) / dt);
+            }
+        }
+
+        this._prevRx = rxTotal;
+        this._prevTx = txTotal;
+        this._prevNetTime = now;
+
+        return {rxSpeed, txSpeed, rxTotal, txTotal};
     }
 
     /**
@@ -320,6 +397,9 @@ class SystemMetrics {
     destroy() {
         this._prevCpuTotal = [];
         this._prevCpuIdle = [];
+        this._prevRx = 0;
+        this._prevTx = 0;
+        this._prevNetTime = 0;
     }
 }
 
@@ -389,7 +469,7 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
         this.valueLabel.text = `${overall.toFixed(1)}%`;
 
         const clamped = Math.max(0, Math.min(100, overall));
-        this.progressBarFill.set_width(Math.round((clamped / 100) * 254));
+        this.progressBarFill.set_width(Math.round((clamped / 100) * 500));
 
         // (Re)build per-core widgets only when the core count changes.
         if (this._coreWidgets.length !== cpu.cores.length) {
@@ -403,13 +483,15 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
                 row.add_child(w1.box);
                 this._coreWidgets.push(w1);
 
+                // Spacer between the columns: pushes the left column to the
+                // start and the right column to the end (justified to the
+                // edges) with the gap in the middle.
+                row.add_child(new St.Widget({x_expand: true}));
+
                 if (i + 1 < cpu.cores.length) {
                     const w2 = this._createCoreWidget(i + 1);
                     row.add_child(w2.box);
                     this._coreWidgets.push(w2);
-                } else {
-                    // Keep the single core aligned to the left column.
-                    row.add_child(new St.Widget({x_expand: true, style_class: 'smp-core-box'}));
                 }
 
                 this.coresContainer.add_child(row);
@@ -424,7 +506,7 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
             w.val.text = `${usage.toFixed(0)}%`;
 
             const cClamped = Math.max(0, Math.min(100, usage));
-            w.barFill.set_width(Math.round((cClamped / 100) * 60));
+            w.barFill.set_width(Math.round((cClamped / 100) * 150));
 
             w.barFill.remove_style_class_name('smp-progress-normal');
             w.barFill.remove_style_class_name('smp-progress-warning');
@@ -436,7 +518,6 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
     _createCoreWidget(index) {
         const box = new St.BoxLayout({
             style_class: 'smp-core-box',
-            x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
         });
 
@@ -463,7 +544,7 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
         });
         box.add_child(val);
 
-        return {box, label, barBg, barFill, val};
+        return {box, barFill, val};
     }
 });
 
@@ -562,7 +643,7 @@ class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
         this.valueLabel.text = `${mem.percent.toFixed(1)}%`;
 
         const clamped = Math.max(0, Math.min(100, mem.percent));
-        this.progressBarFill.set_width(Math.round((clamped / 100) * 254));
+        this.progressBarFill.set_width(Math.round((clamped / 100) * 500));
 
         this.usedLabel.text = `${formatBytes(mem.used)} / ${formatBytes(mem.total)}`;
         this.availLabel.text = formatBytes(mem.available);
@@ -576,7 +657,7 @@ class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
                 `${Math.round(mem.swapPercent)}%  ·  ${formatBytes(mem.swapUsed)} / ${formatBytes(mem.swapTotal)}`;
 
             const sClamped = Math.max(0, Math.min(100, mem.swapPercent));
-            this.swapBarFill.set_width(Math.round((sClamped / 100) * 254));
+            this.swapBarFill.set_width(Math.round((sClamped / 100) * 500));
         } else {
             this.swapBox.visible = false;
         }
@@ -584,12 +665,15 @@ class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
 });
 
 const TempCardItem = GObject.registerClass(
-class TempCardItem extends PopupMenu.PopupBaseMenuItem {
+class TempCardItem extends St.BoxLayout {
     _init(extension) {
         super._init({
             reactive: false,
             can_focus: false,
-            style_class: 'smp-card',
+            style_class: 'smp-card smp-card-half smp-card-half-left',
+            x_expand: true,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
         });
         this.set_vertical(true);
 
@@ -626,7 +710,7 @@ class TempCardItem extends PopupMenu.PopupBaseMenuItem {
         });
         this.add_child(this.overallLabel);
 
-        this.progressBarBg = new St.BoxLayout({style_class: 'smp-bar-bg'});
+        this.progressBarBg = new St.BoxLayout({style_class: 'smp-bar-bg smp-bar-bg-half'});
         this.progressBarFill = new St.Widget({style_class: 'smp-bar-fill smp-color-temp-bg'});
         this.progressBarBg.add_child(this.progressBarFill);
         this.add_child(this.progressBarBg);
@@ -648,7 +732,7 @@ class TempCardItem extends PopupMenu.PopupBaseMenuItem {
             this.overallLabel.text = `Overall · ${overall.name}`;
 
             const tempPercent = Math.min(100, Math.max(0, (overall.tempC / 110) * 100));
-            this.progressBarFill.set_width(Math.round((tempPercent / 100) * 254));
+            this.progressBarFill.set_width(Math.round((tempPercent / 100) * 220));
 
             this.progressBarFill.remove_style_class_name('smp-progress-normal');
             this.progressBarFill.remove_style_class_name('smp-progress-warning');
@@ -704,6 +788,108 @@ class TempCardItem extends PopupMenu.PopupBaseMenuItem {
 
             this.sensorsContainer.add_child(row);
         }
+    }
+});
+
+const NetworkCardItem = GObject.registerClass(
+class NetworkCardItem extends St.BoxLayout {
+    _init(extension) {
+        super._init({
+            reactive: false,
+            can_focus: false,
+            style_class: 'smp-card smp-card-half smp-card-half-right',
+            x_expand: true,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
+        });
+        this.set_vertical(true);
+
+        // Header
+        const header = new St.BoxLayout({style_class: 'smp-card-header'});
+        this.add_child(header);
+
+        const icon = new St.Icon({
+            gicon: Gio.icon_new_for_string(`${extension.path}/icons/smp-network-symbolic.svg`),
+            style_class: 'smp-card-icon smp-color-net',
+        });
+        header.add_child(icon);
+
+        const title = new St.Label({
+            text: 'Network',
+            style_class: 'smp-card-title',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(title);
+
+        header.add_child(new St.Widget({x_expand: true}));
+
+        this.valueLabel = new St.Label({
+            text: '—',
+            style_class: 'smp-card-value smp-color-net',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(this.valueLabel);
+
+        // Current speed rows
+        this.downLabel = this._addSpeedRow('Download', '↓');
+        this.upLabel = this._addSpeedRow('Upload', '↑');
+
+        // Cumulative totals (since boot)
+        this.rxTotalLabel = this._addStatRow('Total received', '—');
+        this.txTotalLabel = this._addStatRow('Total sent', '—');
+    }
+
+    _addSpeedRow(titleText, arrow) {
+        const row = new St.BoxLayout({style_class: 'smp-detail-row'});
+
+        row.add_child(new St.Label({
+            text: `${arrow}  ${titleText}`,
+            style_class: 'smp-detail-title',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+
+        row.add_child(new St.Widget({x_expand: true}));
+
+        const value = new St.Label({
+            text: '0 B/s',
+            style_class: 'smp-net-speed-value',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        row.add_child(value);
+
+        this.add_child(row);
+        return value;
+    }
+
+    _addStatRow(titleText, valueText) {
+        const row = new St.BoxLayout({style_class: 'smp-detail-row'});
+
+        row.add_child(new St.Label({
+            text: titleText,
+            style_class: 'smp-detail-title',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+
+        row.add_child(new St.Widget({x_expand: true}));
+
+        const value = new St.Label({
+            text: valueText,
+            style_class: 'smp-detail-value',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        row.add_child(value);
+
+        this.add_child(row);
+        return value;
+    }
+
+    update(net) {
+        this.valueLabel.text = `↓ ${formatSpeed(net.rxSpeed)}`;
+        this.downLabel.text = formatSpeed(net.rxSpeed);
+        this.upLabel.text = formatSpeed(net.txSpeed);
+        // formatBytes expects kB; /proc counters are bytes.
+        this.rxTotalLabel.text = formatBytes(net.rxTotal / 1024);
+        this.txTotalLabel.text = formatBytes(net.txTotal / 1024);
     }
 });
 
@@ -810,7 +996,6 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._metrics = new SystemMetrics();
         this._timerId = null;
         this._seedTimeoutId = null;
-        this._lastRefreshTime = 0;
 
         // ── Build panel layout ──
         this._panelBox = new St.BoxLayout({
@@ -830,21 +1015,18 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             Gio.icon_new_for_string(`${extension.path}/icons/smp-temperature-symbolic.svg`), '—');
         this._panelBox.add_child(this._tempBox.container);
 
+        this._netBox = this._createMetricBox(
+            Gio.icon_new_for_string(`${extension.path}/icons/smp-network-symbolic.svg`), '—');
+        this._panelBox.add_child(this._netBox.container);
+
         // ── Build dropdown ──
         this._buildDropdownMenu();
 
         // ── Signals ──
-        // Opening the dropdown always pulls fresh data.
+        // Clicking the panel button opens the dropdown, which pulls fresh data.
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen)
                 this._refreshAll();
-        });
-
-        // Hovering the panel button pulls fresh data too, but throttled so a
-        // moving pointer can't spam reads (and so the CPU delta stays sane).
-        this.connect('enter-event', () => {
-            this._refreshThrottled();
-            return Clutter.EVENT_PROPAGATE;
         });
 
         this._settingsChangedId = this._settings.connect('changed', () => {
@@ -855,15 +1037,16 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         // ── Initial settings + seed + timer ──
         this._applySettings();
 
-        // Seed the CPU delta, then do the first real refresh shortly after.
+        // Seed the CPU and network deltas, then do the first real refresh
+        // shortly after. The periodic timer is already started by
+        // _applySettings() above.
         this._metrics.getCpuUsage();
+        this._metrics.getNetworkSpeed();
         this._seedTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 700, () => {
             this._refreshAll();
             this._seedTimeoutId = null;
             return GLib.SOURCE_REMOVE;
         });
-
-        this._startTimer();
     }
 
     _createMetricBox(gicon, labelText) {
@@ -897,41 +1080,66 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._memCard = new MemoryCardItem(this._extension);
         this.menu.addMenuItem(this._memCard);
 
+        // Temperature and Network share a single horizontal row.
         this._tempCard = new TempCardItem(this._extension);
-        this.menu.addMenuItem(this._tempCard);
+        this._netCard = new NetworkCardItem(this._extension);
+
+        this._tempNetRow = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+            style_class: 'smp-card-row',
+        });
+        this._tempNetRow.add_child(this._tempCard);
+        this._tempNetRow.add_child(this._netCard);
+        this.menu.addMenuItem(this._tempNetRow);
 
         this._footer = new FooterItem(this._extension, this);
         this.menu.addMenuItem(this._footer);
     }
 
     _applySettings() {
+        // Panel (top bar) toggles.
         const showCpu = this._settings.get_boolean('show-cpu');
         const showMem = this._settings.get_boolean('show-memory');
         const showTemp = this._settings.get_boolean('show-temperature');
+        const showNet = this._settings.get_boolean('show-network');
+        // Dropdown menu card toggles.
+        const showCpuCard = this._settings.get_boolean('show-cpu-card');
+        const showMemCard = this._settings.get_boolean('show-memory-card');
+        const showTempCard = this._settings.get_boolean('show-temperature-card');
+        const showNetCard = this._settings.get_boolean('show-network-card');
         const showIcons = this._settings.get_boolean('show-icons');
         const showLabels = this._settings.get_boolean('show-labels');
 
         this._cpuBox.container.visible = showCpu;
         this._memBox.container.visible = showMem;
         this._tempBox.container.visible = showTemp;
+        this._netBox.container.visible = showNet;
 
         this._cpuBox.icon.visible = showIcons;
         this._memBox.icon.visible = showIcons;
         this._tempBox.icon.visible = showIcons;
+        this._netBox.icon.visible = showIcons;
 
         this._cpuBox.label.visible = showLabels;
         this._memBox.label.visible = showLabels;
         this._tempBox.label.visible = showLabels;
+        this._netBox.label.visible = showLabels;
 
-        this._cpuCard.visible = showCpu;
-        this._memCard.visible = showMem;
-        this._tempCard.visible = showTemp;
+        this._cpuCard.visible = showCpuCard;
+        this._memCard.visible = showMemCard;
+        this._tempCard.visible = showTempCard;
+        this._netCard.visible = showNetCard;
+        // Hide the shared row entirely when neither card is shown.
+        this._tempNetRow.visible = showTempCard || showNetCard;
 
-        this._stopTimer();
+        // Restart the timer to pick up any refresh-interval change.
         this._startTimer();
     }
 
     _startTimer() {
+        // Guard against leaking an existing source if called twice.
+        this._stopTimer();
         const interval = Math.max(1, this._settings.get_int('refresh-interval'));
         this._timerId = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT,
@@ -953,19 +1161,10 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     // Each metric is refreshed independently so a failure in one never
     // blocks the others.
     _refreshAll() {
-        this._lastRefreshTime = GLib.get_monotonic_time();
         this._refreshCpu();
         this._refreshMemory();
         this._refreshTemperature();
-    }
-
-    // Refresh only if enough time has passed since the last refresh. Used for
-    // hover so a moving pointer doesn't trigger a read on every event and so
-    // the CPU usage delta is measured over a meaningful window.
-    _refreshThrottled(minIntervalMs = 1000) {
-        const elapsedMs = (GLib.get_monotonic_time() - this._lastRefreshTime) / 1000;
-        if (elapsedMs >= minIntervalMs)
-            this._refreshAll();
+        this._refreshNetwork();
     }
 
     _refreshCpu() {
@@ -1013,6 +1212,19 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             this._tempCard.update(temps, overall, isFahrenheit);
         } catch (e) {
             console.error('System Monitor Panel: temperature refresh failed', e);
+        }
+    }
+
+    _refreshNetwork() {
+        try {
+            const net = this._metrics.getNetworkSpeed();
+            this._netBox.label.text =
+                `↓${formatSpeedCompact(net.rxSpeed)} ↑${formatSpeedCompact(net.txSpeed)}`;
+            // Network has no percentage scale, so keep the panel label neutral.
+            this._setPanelLabelColor(this._netBox.label, 0);
+            this._netCard.update(net);
+        } catch (e) {
+            console.error('System Monitor Panel: network refresh failed', e);
         }
     }
 
