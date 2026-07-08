@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.system-monitor-panel"
+          path="/org/gnome/shell/extensions/system-monitor-panel/">
+
+    <key name="refresh-interval" type="i">
+      <default>3</default>
+      <summary>Refresh interval</summary>
+      <description>How often to refresh system metrics, in seconds (1–30).</description>
+    </key>
+
+    <key name="temperature-unit" type="s">
+      <default>'celsius'</default>
+      <summary>Temperature unit</summary>
+      <description>Display temperature in "celsius" or "fahrenheit".</description>
+    </key>
+
+    <key name="show-cpu" type="b">
+      <default>true</default>
+      <summary>Show CPU usage</summary>
+      <description>Whether to show CPU usage percentage in the panel.</description>
+    </key>
+
+    <key name="show-memory" type="b">
+      <default>true</default>
+      <summary>Show memory usage</summary>
+      <description>Whether to show memory usage percentage in the panel.</description>
+    </key>
+
+    <key name="show-temperature" type="b">
+      <default>true</default>
+      <summary>Show temperature</summary>
+      <description>Whether to show device temperature in the panel.</description>
+    </key>
+
+    <key name="show-icons" type="b">
+      <default>true</default>
+      <summary>Show icons</summary>
+      <description>Whether to show icons next to metric values in the panel.</description>
+    </key>
+
+    <key name="show-labels" type="b">
+      <default>true</default>
+      <summary>Show text labels</summary>
+      <description>Whether to show text values next to icons in the panel.</description>
+    </key>
+
+  </schema>
+</schemalist>
