@@ -4,9 +4,10 @@
           path="/org/gnome/shell/extensions/system-monitor-panel/">
 
     <key name="refresh-interval" type="i">
-      <default>3</default>
+      <default>30</default>
+      <range min="1" max="300"/>
       <summary>Refresh interval</summary>
-      <description>How often to refresh system metrics, in seconds (1–30).</description>
+      <description>How often to refresh system metrics, in seconds (1–300).</description>
     </key>
 
     <key name="temperature-unit" type="s">

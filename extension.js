@@ -719,6 +719,13 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
         const box = new St.BoxLayout({style_class: 'smp-footer-box', x_expand: true});
         this.add_child(box);
 
+        // Refresh button — pulls fresh data in place and keeps the menu open.
+        const refreshBtn = this._makeIconButton('view-refresh-symbolic', 'Refresh now');
+        refreshBtn.connect('clicked', () => indicator._refreshAll());
+        box.add_child(refreshBtn);
+
+        box.add_child(new St.Widget({width: 12}));
+
         // System Monitor button
         const monitorBtn = this._makeButton(
             'utilities-system-monitor-symbolic', 'System Monitor');
@@ -759,6 +766,18 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
         return btn;
     }
 
+    _makeIconButton(iconName, accessibleName) {
+        const btn = new St.Button({
+            style_class: 'smp-footer-button smp-footer-icon-button',
+            can_focus: true,
+            reactive: true,
+            track_hover: true,
+            accessible_name: accessibleName,
+        });
+        btn.set_child(new St.Icon({icon_name: iconName, style_class: 'smp-footer-btn-icon'}));
+        return btn;
+    }
+
     _launchSystemMonitor() {
         // Launch through a proper app-launch context first…
         try {
@@ -791,6 +810,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._metrics = new SystemMetrics();
         this._timerId = null;
         this._seedTimeoutId = null;
+        this._lastRefreshTime = 0;
 
         // ── Build panel layout ──
         this._panelBox = new St.BoxLayout({
@@ -814,9 +834,17 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._buildDropdownMenu();
 
         // ── Signals ──
+        // Opening the dropdown always pulls fresh data.
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen)
                 this._refreshAll();
+        });
+
+        // Hovering the panel button pulls fresh data too, but throttled so a
+        // moving pointer can't spam reads (and so the CPU delta stays sane).
+        this.connect('enter-event', () => {
+            this._refreshThrottled();
+            return Clutter.EVENT_PROPAGATE;
         });
 
         this._settingsChangedId = this._settings.connect('changed', () => {
@@ -925,9 +953,19 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     // Each metric is refreshed independently so a failure in one never
     // blocks the others.
     _refreshAll() {
+        this._lastRefreshTime = GLib.get_monotonic_time();
         this._refreshCpu();
         this._refreshMemory();
         this._refreshTemperature();
+    }
+
+    // Refresh only if enough time has passed since the last refresh. Used for
+    // hover so a moving pointer doesn't trigger a read on every event and so
+    // the CPU usage delta is measured over a meaningful window.
+    _refreshThrottled(minIntervalMs = 1000) {
+        const elapsedMs = (GLib.get_monotonic_time() - this._lastRefreshTime) / 1000;
+        if (elapsedMs >= minIntervalMs)
+            this._refreshAll();
     }
 
     _refreshCpu() {

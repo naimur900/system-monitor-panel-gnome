@@ -33,12 +33,12 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         // Refresh interval
         const refreshRow = new Adw.SpinRow({
             title: 'Refresh Interval',
-            subtitle: 'How often to update metrics (seconds)',
+            subtitle: 'How often to update metrics automatically (1–300 seconds)',
             adjustment: new Gtk.Adjustment({
                 lower: 1,
-                upper: 30,
+                upper: 300,
                 step_increment: 1,
-                page_increment: 5,
+                page_increment: 10,
                 value: settings.get_int('refresh-interval'),
             }),
         });
