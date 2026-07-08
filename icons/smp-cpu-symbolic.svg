@@ -1,5 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
-  <path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5zm0 1h6a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z" fill="currentColor"/>
-  <rect x="6" y="6" width="4" height="4" rx="0.5" fill="currentColor"/>
-  <path d="M7 1v1.5h2V1H7zm0 13.5V15h2v-1.5H7zM1 7v2h1.5V7H1zm13.5 0v2H16V7h-1.5z" fill="currentColor"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <path fill="#2e3436" fill-rule="evenodd" d="M3 3H13V13H3V3ZM5 5V11H11V5H5Z"></path>
+  <rect fill="#2e3436" x="6" y="6" width="4" height="4"></rect>
+  <rect fill="#2e3436" x="5.5" y="1" width="1" height="2"></rect>
+  <rect fill="#2e3436" x="9.5" y="1" width="1" height="2"></rect>
+  <rect fill="#2e3436" x="5.5" y="13" width="1" height="2"></rect>
+  <rect fill="#2e3436" x="9.5" y="13" width="1" height="2"></rect>
+  <rect fill="#2e3436" x="1" y="5.5" width="2" height="1"></rect>
+  <rect fill="#2e3436" x="1" y="9.5" width="2" height="1"></rect>
+  <rect fill="#2e3436" x="13" y="5.5" width="2" height="1"></rect>
+  <rect fill="#2e3436" x="13" y="9.5" width="2" height="1"></rect>
 </svg>
