@@ -42,12 +42,17 @@
 
 .smp-dropdown-menu {
   min-width: 560px;
-  padding: 4px 0;
+  /* Roomier inset around the whole panel; smaller corner radius. */
+  padding: 8px;
+  border-radius: 10px;
 }
 
-/* Row that holds two cards side by side (Temperature + Network) */
+/* Row that holds two cards side by side (Temperature + Network).
+   spacing: 0 cancels the popup-menu-item default, so the gap between the
+   two cards comes only from their own 4px margins, matching every other gap. */
 .smp-card-row {
   padding: 0;
+  spacing: 0;
 }
 
 /* --- Dashboard Card Styling --- */
@@ -56,25 +61,18 @@
   background-color: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 5px;
-  margin: 4px 8px;
+  /* Symmetric margin drives a uniform 8px gap between every card
+     (4px + 4px), independent of the container's outer padding. */
+  margin: 4px;
   padding: 8px 10px;
   spacing: 6px;
 }
 
 /* Half-width cards that share a row (Temperature + Network). Equal preferred
-   width makes them stretch to equal final width; the reduced inner margin
-   gives an 8px gap between them, matching the 8px vertical gap elsewhere,
-   while the outer edges stay at 8px. */
+   width + x_expand makes them stretch to equal final width; the symmetric 4px
+   card margin already yields the same 8px gap between them as everywhere else. */
 .smp-card-half {
   width: 250px;
-}
-
-.smp-card-half-left {
-  margin-right: 4px;
-}
-
-.smp-card-half-right {
-  margin-left: 4px;
 }
 
 .smp-card-header {
@@ -297,7 +295,8 @@
 /* --- Footer Layout (Quick Settings buttons) --- */
 
 .smp-footer {
-  padding: 6px 8px 4px 8px;
+  /* 4px top pairs with the row's 4px bottom margin for the same 8px gap. */
+  padding: 4px 8px;
 }
 
 .smp-footer-box {
@@ -307,7 +306,7 @@
 .smp-footer-button {
   background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 8px;
+  border-radius: 5px;
   padding: 6px 0;
   transition: background-color 150ms ease;
 }
