@@ -7,14 +7,14 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import Gtk from 'gi://Gtk';
 
-import {ExtensionPreferences} from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
+import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 
 export default class SystemMonitorPanelPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
-        window.set_default_size(540, 640);
+        window.set_default_size(680, 780);
 
         // ── General Page ──
         // Adw.PreferencesPage has no padding property; margins inset its
@@ -22,10 +22,10 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         const page = new Adw.PreferencesPage({
             title: 'System Monitor Panel',
             icon_name: 'utilities-system-monitor-symbolic',
-            margin_top: 12,
-            margin_bottom: 12,
-            margin_start: 18,
-            margin_end: 18,
+            margin_top: 24,
+            margin_bottom: 24,
+            margin_start: 32,
+            margin_end: 32,
         });
         window.add(page);
 
@@ -205,15 +205,15 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
 
         // ── Dropdown Menu Cards Group ──
         const cardGroup = new Adw.PreferencesGroup({
-            title: 'Dropdown Menu Cards',
-            description: 'Choose which detail cards appear in the dropdown menu',
+            title: 'Menu',
+            description: 'Choose which detail cards appear in the menu',
         });
         page.add(cardGroup);
 
         // Show CPU Card
         const cpuCardRow = new Adw.SwitchRow({
             title: 'Show CPU Card',
-            subtitle: 'Display the CPU usage card in the dropdown',
+            subtitle: 'Display the CPU usage card in the menu',
         });
         settings.bind(
             'show-cpu-card',
@@ -226,7 +226,7 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         // Show Memory Card
         const memCardRow = new Adw.SwitchRow({
             title: 'Show Memory Card',
-            subtitle: 'Display the memory usage card in the dropdown',
+            subtitle: 'Display the memory usage card in the menu',
         });
         settings.bind(
             'show-memory-card',
@@ -239,7 +239,7 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         // Show Disk Card
         const diskCardRow = new Adw.SwitchRow({
             title: 'Show Disk Card',
-            subtitle: 'Display the disk usage card in the dropdown',
+            subtitle: 'Display the disk usage card in the menu',
         });
         settings.bind(
             'show-disk-card',
@@ -271,7 +271,7 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         // Show Temperature Card
         const tempCardRow = new Adw.SwitchRow({
             title: 'Show Temperature Card',
-            subtitle: 'Display the temperature card in the dropdown',
+            subtitle: 'Display the temperature card in the menu',
         });
         settings.bind(
             'show-temperature-card',
@@ -284,7 +284,7 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         // Show Network Card
         const netCardRow = new Adw.SwitchRow({
             title: 'Show Network Card',
-            subtitle: 'Display the network speed card in the dropdown',
+            subtitle: 'Display the network speed card in the menu',
         });
         settings.bind(
             'show-network-card',
@@ -315,16 +315,16 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         displayGroup.add(iconsRow);
 
         // Show Labels
-        const labelsRow = new Adw.SwitchRow({
-            title: 'Show Text Labels',
-            subtitle: 'Display text values next to icons',
-        });
-        settings.bind(
-            'show-labels',
-            labelsRow,
-            'active',
-            Gio.SettingsBindFlags.DEFAULT
-        );
-        displayGroup.add(labelsRow);
+        // const labelsRow = new Adw.SwitchRow({
+        //     title: 'Show Text Labels',
+        //     subtitle: 'Display text values next to icons',
+        // });
+        // settings.bind(
+        //     'show-labels',
+        //     labelsRow,
+        //     'active',
+        //     Gio.SettingsBindFlags.DEFAULT
+        // );
+        // displayGroup.add(labelsRow);
     }
 }
