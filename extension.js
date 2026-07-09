@@ -1835,6 +1835,15 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 /**
  * Where each panel-position value lands: which of the panel's boxes, and at
  * which index inside it. A null index means "append to the end of the box".
+ *
+ * `_leftBox`/`_rightBox` are private Shell internals. addToStatusArea() takes a
+ * public box name, but only as an insertion point — it cannot re-place an
+ * indicator whose role is already claimed, and expressing "append" needs the
+ * box's child count. Both require the box actor itself, so there is no public
+ * route to these four positions today.
+ *
+ * If a future Shell renames them, _applyPosition() bails and the indicator
+ * stays where addToStatusArea() put it, losing the setting but nothing else.
  */
 const PANEL_POSITIONS = {
     'far-left': {box: '_leftBox', index: 0},
@@ -1866,7 +1875,9 @@ export default class SystemMonitorPanelExtension extends Extension {
 
         const targetBox = Main.panel[box];
         if (!targetBox) {
-            console.error(`System Monitor Panel: unknown panel box "${box}"`);
+            console.error(
+                `System Monitor Panel: this GNOME Shell no longer exposes ` +
+                `Main.panel.${box}; keeping the default panel position.`);
             return;
         }
 
