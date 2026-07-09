@@ -5,5 +5,5 @@
   "shell-version": ["50"],
   "version-name": "1.0",
   "settings-schema": "org.gnome.shell.extensions.system-monitor-panel",
-  "url": "https://github.com/naimur/system-monitor-panel"
+  "url": "https://github.com/naimur900/system-monitor-panel-gnome"
 }
