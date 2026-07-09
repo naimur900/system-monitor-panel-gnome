@@ -1449,7 +1449,8 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
             appInfo.launch([], global.create_app_launch_context(0, -1));
             return;
         } catch (e) {
-            console.error('System Monitor Panel: AppInfo launch failed', e);
+            // Recoverable: the spawn below is the real failure point.
+            console.debug(`System Monitor Panel: AppInfo launch failed: ${e}`);
         }
         // …and fall back to a raw spawn if that fails.
         try {
@@ -1514,10 +1515,11 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
         // ── Signals ──
         // Clicking the panel button opens the dropdown, which pulls fresh data.
-        this.menu.connect('open-state-changed', (_menu, isOpen) => {
-            if (isOpen)
-                this._refreshAll();
-        });
+        this._menuStateChangedId = this.menu.connect(
+            'open-state-changed', (_menu, isOpen) => {
+                if (isOpen)
+                    this._refreshAll();
+            });
 
         // Only the interval change needs to restart the timer.
         this._intervalChangedId = this._settings.connect(
@@ -1810,6 +1812,11 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         if (this._queuedRefreshId) {
             GLib.source_remove(this._queuedRefreshId);
             this._queuedRefreshId = null;
+        }
+
+        if (this._menuStateChangedId) {
+            this.menu.disconnect(this._menuStateChangedId);
+            this._menuStateChangedId = null;
         }
 
         if (this._settingsChangedId) {
