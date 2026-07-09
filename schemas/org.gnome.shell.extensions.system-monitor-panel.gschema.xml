@@ -44,6 +44,12 @@
       <description>Whether to show memory usage percentage in the panel.</description>
     </key>
 
+    <key name="show-disk" type="b">
+      <default>true</default>
+      <summary>Show disk usage</summary>
+      <description>Whether to show disk usage percentage in the panel.</description>
+    </key>
+
     <key name="show-temperature" type="b">
       <default>true</default>
       <summary>Show temperature</summary>

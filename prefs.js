@@ -164,6 +164,19 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         visGroup.add(memRow);
 
+        // Show Disk
+        const diskRow = new Adw.SwitchRow({
+            title: 'Show Disk Usage',
+            subtitle: 'Display total disk usage percentage in the panel',
+        });
+        settings.bind(
+            'show-disk',
+            diskRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        visGroup.add(diskRow);
+
         // Show Temperature
         const tempRow = new Adw.SwitchRow({
             title: 'Show Temperature',

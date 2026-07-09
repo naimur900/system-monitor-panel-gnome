@@ -1357,6 +1357,10 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             Gio.icon_new_for_string(`${extension.path}/icons/smp-memory-symbolic.svg`), '—');
         this._panelBox.add_child(this._memBox.container);
 
+        this._diskBox = this._createMetricBox(
+            Gio.icon_new_for_string(`${extension.path}/icons/smp-disk-symbolic.svg`), '—');
+        this._panelBox.add_child(this._diskBox.container);
+
         this._tempBox = this._createMetricBox(
             Gio.icon_new_for_string(`${extension.path}/icons/smp-temperature-symbolic.svg`), '—');
         this._panelBox.add_child(this._tempBox.container);
@@ -1457,6 +1461,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         // Panel (top bar) toggles.
         const showCpu = this._settings.get_boolean('show-cpu');
         const showMem = this._settings.get_boolean('show-memory');
+        const showDisk = this._settings.get_boolean('show-disk');
         const showTemp = this._settings.get_boolean('show-temperature');
         const showNet = this._settings.get_boolean('show-network');
         // Dropdown menu card toggles.
@@ -1470,18 +1475,14 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
         this._cpuBox.container.visible = showCpu;
         this._memBox.container.visible = showMem;
+        this._diskBox.container.visible = showDisk;
         this._tempBox.container.visible = showTemp;
         this._netBox.container.visible = showNet;
 
-        this._cpuBox.icon.visible = showIcons;
-        this._memBox.icon.visible = showIcons;
-        this._tempBox.icon.visible = showIcons;
-        this._netBox.icon.visible = showIcons;
-
-        this._cpuBox.label.visible = showLabels;
-        this._memBox.label.visible = showLabels;
-        this._tempBox.label.visible = showLabels;
-        this._netBox.label.visible = showLabels;
+        for (const box of [this._cpuBox, this._memBox, this._diskBox, this._tempBox, this._netBox]) {
+            box.icon.visible = showIcons;
+            box.label.visible = showLabels;
+        }
 
         this._cpuCard.visible = showCpuCard;
         this._memCard.visible = showMemCard;
@@ -1552,15 +1553,26 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     }
 
     _refreshDisk() {
-        // Disk has no panel label, so skip the filesystem stat calls entirely
-        // while the card is hidden.
-        if (!this._diskCard.visible)
+        // Nothing consumes the filesystem stats while both the panel indicator
+        // and the card are hidden, so skip the syscalls entirely.
+        if (!this._diskCard.visible && !this._diskBox.container.visible)
             return;
 
         try {
             const includeExternal = this._settings.get_boolean('show-external-disks');
             const disks = this._metrics.getDiskUsage(includeExternal);
-            this._diskCard.update(disks, this._metrics.getOverallDiskUsage(disks));
+            const overall = this._metrics.getOverallDiskUsage(disks);
+
+            if (disks.length > 0) {
+                const percent = Math.round(overall.percent);
+                this._diskBox.label.text = `${percent}%`;
+                this._setPanelLabelColor(this._diskBox.label, percent);
+            } else {
+                this._diskBox.label.text = 'N/A';
+                this._setPanelLabelColor(this._diskBox.label, 0);
+            }
+
+            this._diskCard.update(disks, overall);
         } catch (e) {
             console.error('System Monitor Panel: disk refresh failed', e);
         }
