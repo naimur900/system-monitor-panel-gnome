@@ -38,7 +38,9 @@ function readFile(path) {
  * Format a size given in kB to a human-readable string.
  */
 function formatBytes(kB) {
-    if (kB >= 1048576)
+    if (kB >= 1073741824)
+        return `${(kB / 1073741824).toFixed(2)} TB`;
+    else if (kB >= 1048576)
         return `${(kB / 1048576).toFixed(1)} GB`;
     else if (kB >= 1024)
         return `${(kB / 1024).toFixed(0)} MB`;
@@ -47,9 +49,21 @@ function formatBytes(kB) {
 
 /**
  * Format a network speed given in bytes/second to a human-readable string.
+ * When useBits is true, render as a bit rate (kbps/Mbps/Gbps) instead.
+ * Bit rates use decimal (1000-based) units by convention; byte rates binary.
  */
-function formatSpeed(bytesPerSec) {
+function formatSpeed(bytesPerSec, useBits = false) {
     const b = Math.max(0, bytesPerSec);
+    if (useBits) {
+        const bits = b * 8;
+        if (bits >= 1e9)
+            return `${(bits / 1e9).toFixed(1)} Gbps`;
+        if (bits >= 1e6)
+            return `${(bits / 1e6).toFixed(1)} Mbps`;
+        if (bits >= 1e3)
+            return `${(bits / 1e3).toFixed(0)} kbps`;
+        return `${Math.round(bits)} bps`;
+    }
     if (b >= 1048576)
         return `${(b / 1048576).toFixed(1)} MB/s`;
     if (b >= 1024)
@@ -60,13 +74,116 @@ function formatSpeed(bytesPerSec) {
 /**
  * Compact speed string for the tight panel area (e.g. "1.2M", "340K").
  */
-function formatSpeedCompact(bytesPerSec) {
+function formatSpeedCompact(bytesPerSec, useBits = false) {
     const b = Math.max(0, bytesPerSec);
+    if (useBits) {
+        const bits = b * 8;
+        if (bits >= 1e9)
+            return `${(bits / 1e9).toFixed(1)}G`;
+        if (bits >= 1e6)
+            return `${(bits / 1e6).toFixed(1)}M`;
+        if (bits >= 1e3)
+            return `${Math.round(bits / 1e3)}K`;
+        return `${Math.round(bits)}b`;
+    }
     if (b >= 1048576)
         return `${(b / 1048576).toFixed(1)}M`;
     if (b >= 1024)
         return `${Math.round(b / 1024)}K`;
     return `${Math.round(b)}B`;
+}
+
+/**
+ * Filesystem types that are block-backed but never interesting to report:
+ * squashfs images (snaps, appimages) and read-only optical/boot images.
+ */
+const IGNORED_FS_TYPES = new Set(['squashfs', 'overlay', 'ramfs']);
+
+/**
+ * Mount-point prefixes where desktop environments auto-mount removable media.
+ */
+const EXTERNAL_MOUNT_PREFIXES = ['/run/media/', '/media/', '/mnt/'];
+
+/**
+ * /proc/mounts escapes spaces, tabs, newlines and backslashes as octal.
+ */
+function unescapeMountField(field) {
+    return field.replace(/\\(\d{3})/g, (_m, oct) => String.fromCharCode(parseInt(oct, 8)));
+}
+
+/**
+ * Decide whether a mounted device lives on removable/external storage.
+ *
+ * A device is external when it is auto-mounted under a removable-media path,
+ * sits behind USB/MMC in the sysfs device tree, or its backing disk sets the
+ * `removable` flag. Device-mapper nodes (LUKS, LVM) have no /sys/class/block
+ * symlink to walk, so those are only caught by the mount-point check.
+ */
+function isExternalDisk(device, mountPoint) {
+    if (EXTERNAL_MOUNT_PREFIXES.some(p => mountPoint.startsWith(p)))
+        return true;
+
+    const blockName = device.slice('/dev/'.length);
+
+    let target = null;
+    try {
+        target = GLib.file_read_link(`/sys/class/block/${blockName}`);
+    } catch (_e) {
+        return false;
+    }
+    if (!target)
+        return false;
+
+    if (target.includes('/usb') || target.includes('/mmc_host/'))
+        return true;
+
+    // Partitions carry no `removable` flag — it lives on the parent disk, which
+    // is the directory containing the partition in the resolved sysfs path.
+    let removable = readFile(`/sys/class/block/${blockName}/removable`);
+    if (removable === null) {
+        const segments = target.split('/');
+        const diskName = segments[segments.length - 2];
+        if (diskName)
+            removable = readFile(`/sys/class/block/${diskName}/removable`);
+    }
+
+    return removable !== null && removable.trim() === '1';
+}
+
+/**
+ * Query a mount point for its size/used/free in bytes, or null when the
+ * filesystem cannot be stat'd (permissions, stale network mount, …).
+ */
+function queryFilesystemUsage(mountPoint) {
+    try {
+        const info = Gio.File.new_for_path(mountPoint).query_filesystem_info(
+            'filesystem::size,filesystem::used,filesystem::free', null);
+
+        const total = info.get_attribute_uint64('filesystem::size');
+        const free = info.get_attribute_uint64('filesystem::free');
+        // filesystem::used is not reported by every backend; derive it there.
+        const used = info.get_attribute_uint64('filesystem::used') ||
+            Math.max(0, total - free);
+
+        return {total, used, free};
+    } catch (_e) {
+        return null;
+    }
+}
+
+/**
+ * Human-friendly label for a mount point.
+ */
+function friendlyMountName(mountPoint) {
+    if (mountPoint === '/')
+        return 'Root';
+    // Auto-mounted media lives at /run/media/<user>/<label>; the label is the
+    // only part the user recognises.
+    for (const prefix of EXTERNAL_MOUNT_PREFIXES) {
+        if (mountPoint.startsWith(prefix))
+            return mountPoint.split('/').pop() || mountPoint;
+    }
+    return mountPoint;
 }
 
 /**
@@ -287,6 +404,88 @@ class SystemMetrics {
         this._prevNetTime = now;
 
         return {rxSpeed, txSpeed, rxTotal, txTotal};
+    }
+
+    /**
+     * Read mounted filesystem usage from /proc/mounts.
+     *
+     * External (removable/USB) disks are only included when includeExternal is
+     * true. Sizes are in bytes. Returns [{ name, mountPoint, device, total,
+     * used, free, percent, isExternal }] with internal disks first, each group
+     * sorted by mount point.
+     */
+    getDiskUsage(includeExternal = false) {
+        const data = readFile('/proc/mounts');
+        if (!data)
+            return [];
+
+        const disks = [];
+        // A device mounted more than once (btrfs subvolumes, bind mounts)
+        // reports identical usage for each mount, so only keep the first.
+        const seenDevices = new Set();
+
+        for (const line of data.split('\n')) {
+            const parts = line.split(/\s+/);
+            if (parts.length < 3)
+                continue;
+
+            const device = unescapeMountField(parts[0]);
+            const mountPoint = unescapeMountField(parts[1]);
+            const fsType = parts[2];
+
+            // Only real block-backed filesystems: this drops tmpfs, proc,
+            // cgroup, gvfs and every other pseudo filesystem in one check.
+            if (!device.startsWith('/dev/'))
+                continue;
+            if (IGNORED_FS_TYPES.has(fsType))
+                continue;
+            if (seenDevices.has(device))
+                continue;
+
+            const isExternal = isExternalDisk(device, mountPoint);
+            if (isExternal && !includeExternal)
+                continue;
+
+            const usage = queryFilesystemUsage(mountPoint);
+            if (!usage || usage.total <= 0)
+                continue;
+
+            seenDevices.add(device);
+            disks.push({
+                name: friendlyMountName(mountPoint),
+                mountPoint,
+                device,
+                total: usage.total,
+                used: usage.used,
+                free: usage.free,
+                percent: (usage.used / usage.total) * 100,
+                isExternal,
+            });
+        }
+
+        disks.sort((a, b) => {
+            if (a.isExternal !== b.isExternal)
+                return a.isExternal ? 1 : -1;
+            return a.mountPoint.localeCompare(b.mountPoint);
+        });
+        return disks;
+    }
+
+    /**
+     * Aggregate usage across the given disks. Returns { percent, used, total }.
+     */
+    getOverallDiskUsage(disks) {
+        let used = 0;
+        let total = 0;
+        for (const d of disks) {
+            used += d.used;
+            total += d.total;
+        }
+        return {
+            percent: total > 0 ? (used / total) * 100 : 0,
+            used,
+            total,
+        };
     }
 
     /**
@@ -549,12 +748,15 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
 });
 
 const MemoryCardItem = GObject.registerClass(
-class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
+class MemoryCardItem extends St.BoxLayout {
     _init(extension) {
         super._init({
             reactive: false,
             can_focus: false,
-            style_class: 'smp-card',
+            style_class: 'smp-card smp-card-half smp-card-half-left',
+            x_expand: true,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
         });
         this.set_vertical(true);
 
@@ -585,7 +787,7 @@ class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
         header.add_child(this.valueLabel);
 
         // Main progress bar
-        this.progressBarBg = new St.BoxLayout({style_class: 'smp-bar-bg'});
+        this.progressBarBg = new St.BoxLayout({style_class: 'smp-bar-bg smp-bar-bg-half'});
         this.progressBarFill = new St.Widget({style_class: 'smp-bar-fill smp-color-mem-bg'});
         this.progressBarBg.add_child(this.progressBarFill);
         this.add_child(this.progressBarBg);
@@ -609,7 +811,7 @@ class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
         swapHeader.add_child(this.swapValueLabel);
         this.swapBox.add_child(swapHeader);
 
-        this.swapBarBg = new St.BoxLayout({style_class: 'smp-swap-bar-bg'});
+        this.swapBarBg = new St.BoxLayout({style_class: 'smp-swap-bar-bg smp-swap-bar-bg-half'});
         this.swapBarFill = new St.Widget({style_class: 'smp-swap-bar-fill'});
         this.swapBarBg.add_child(this.swapBarFill);
         this.swapBox.add_child(this.swapBarBg);
@@ -643,7 +845,7 @@ class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
         this.valueLabel.text = `${mem.percent.toFixed(1)}%`;
 
         const clamped = Math.max(0, Math.min(100, mem.percent));
-        this.progressBarFill.set_width(Math.round((clamped / 100) * 500));
+        this.progressBarFill.set_width(Math.round((clamped / 100) * 220));
 
         this.usedLabel.text = `${formatBytes(mem.used)} / ${formatBytes(mem.total)}`;
         this.availLabel.text = formatBytes(mem.available);
@@ -657,10 +859,155 @@ class MemoryCardItem extends PopupMenu.PopupBaseMenuItem {
                 `${Math.round(mem.swapPercent)}%  ·  ${formatBytes(mem.swapUsed)} / ${formatBytes(mem.swapTotal)}`;
 
             const sClamped = Math.max(0, Math.min(100, mem.swapPercent));
-            this.swapBarFill.set_width(Math.round((sClamped / 100) * 500));
+            this.swapBarFill.set_width(Math.round((sClamped / 100) * 220));
         } else {
             this.swapBox.visible = false;
         }
+    }
+});
+
+const DiskCardItem = GObject.registerClass(
+class DiskCardItem extends St.BoxLayout {
+    _init(extension) {
+        super._init({
+            reactive: false,
+            can_focus: false,
+            style_class: 'smp-card smp-card-half smp-card-half-right',
+            x_expand: true,
+            y_expand: true,
+            y_align: Clutter.ActorAlign.FILL,
+        });
+        this.set_vertical(true);
+
+        // Header
+        const header = new St.BoxLayout({style_class: 'smp-card-header'});
+        this.add_child(header);
+
+        const icon = new St.Icon({
+            gicon: Gio.icon_new_for_string(`${extension.path}/icons/smp-disk-symbolic.svg`),
+            style_class: 'smp-card-icon smp-color-disk',
+        });
+        header.add_child(icon);
+
+        const title = new St.Label({
+            text: 'Disk',
+            style_class: 'smp-card-title',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(title);
+
+        header.add_child(new St.Widget({x_expand: true}));
+
+        this.valueLabel = new St.Label({
+            text: '—',
+            style_class: 'smp-card-value smp-color-disk',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(this.valueLabel);
+
+        // Combined usage across every listed filesystem
+        this.overallLabel = new St.Label({
+            text: 'Total storage used',
+            style_class: 'smp-section-subtitle',
+        });
+        this.add_child(this.overallLabel);
+
+        this.progressBarBg = new St.BoxLayout({style_class: 'smp-bar-bg smp-bar-bg-half'});
+        this.progressBarFill = new St.Widget({style_class: 'smp-bar-fill smp-color-disk-bg'});
+        this.progressBarBg.add_child(this.progressBarFill);
+        this.add_child(this.progressBarBg);
+
+        // Per-filesystem breakdown
+        this.disksContainer = new St.BoxLayout({
+            style_class: 'smp-disks-container',
+            vertical: true,
+        });
+        this.add_child(this.disksContainer);
+    }
+
+    update(disks, overall) {
+        if (disks.length > 0) {
+            this.valueLabel.text = `${overall.percent.toFixed(1)}%`;
+            this.overallLabel.text =
+                `Total · ${formatBytes(overall.used / 1024)} / ${formatBytes(overall.total / 1024)}`;
+
+            const clamped = Math.max(0, Math.min(100, overall.percent));
+            this.progressBarFill.set_width(Math.round((clamped / 100) * 220));
+
+            this.progressBarFill.remove_style_class_name('smp-progress-normal');
+            this.progressBarFill.remove_style_class_name('smp-progress-warning');
+            this.progressBarFill.remove_style_class_name('smp-progress-critical');
+            this.progressBarFill.add_style_class_name(`smp-progress-${thresholdClass(overall.percent)}`);
+        } else {
+            this.valueLabel.text = 'N/A';
+            this.overallLabel.text = 'Total storage used';
+            this.progressBarFill.set_width(0);
+        }
+
+        // The mount list changes whenever a drive is plugged in or the external
+        // toggle flips, so rebuild the rows rather than diff them.
+        this.disksContainer.remove_all_children();
+
+        if (disks.length === 0) {
+            this.disksContainer.add_child(new St.Label({
+                text: 'No mounted filesystems found',
+                style_class: 'smp-no-sensors',
+            }));
+            return;
+        }
+
+        for (const disk of disks.slice(0, 5))
+            this.disksContainer.add_child(this._createDiskEntry(disk));
+    }
+
+    _createDiskEntry(disk) {
+        const entry = new St.BoxLayout({
+            style_class: 'smp-disk-entry',
+            vertical: true,
+        });
+
+        const row = new St.BoxLayout({style_class: 'smp-disk-row'});
+
+        row.add_child(new St.Label({
+            text: disk.name,
+            style_class: 'smp-disk-name',
+            y_align: Clutter.ActorAlign.CENTER,
+        }));
+
+        if (disk.isExternal) {
+            row.add_child(new St.Label({
+                text: 'EXT',
+                style_class: 'smp-disk-badge',
+                y_align: Clutter.ActorAlign.CENTER,
+            }));
+        }
+
+        row.add_child(new St.Widget({x_expand: true}));
+
+        row.add_child(new St.Label({
+            text: `${Math.round(disk.percent)}%`,
+            style_class: 'smp-disk-percent',
+            y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.END,
+        }));
+
+        entry.add_child(row);
+
+        const barBg = new St.BoxLayout({style_class: 'smp-disk-bar-bg'});
+        const barFill = new St.Widget({
+            style_class: `smp-disk-bar-fill smp-progress-${thresholdClass(disk.percent)}`,
+        });
+        const clamped = Math.max(0, Math.min(100, disk.percent));
+        barFill.set_width(Math.round((clamped / 100) * 220));
+        barBg.add_child(barFill);
+        entry.add_child(barBg);
+
+        entry.add_child(new St.Label({
+            text: `${formatBytes(disk.used / 1024)} / ${formatBytes(disk.total / 1024)} · ${formatBytes(disk.free / 1024)} free`,
+            style_class: 'smp-disk-detail',
+        }));
+
+        return entry;
     }
 });
 
@@ -883,10 +1230,11 @@ class NetworkCardItem extends St.BoxLayout {
         return value;
     }
 
-    update(net) {
-        this.valueLabel.text = `↓ ${formatSpeed(net.rxSpeed)}`;
-        this.downLabel.text = formatSpeed(net.rxSpeed);
-        this.upLabel.text = formatSpeed(net.txSpeed);
+    update(net, useBits = false) {
+        this.valueLabel.text = `↓ ${formatSpeed(net.rxSpeed, useBits)}`;
+        this.downLabel.text = formatSpeed(net.rxSpeed, useBits);
+        this.upLabel.text = formatSpeed(net.txSpeed, useBits);
+        // Cumulative totals stay in bytes; a bit-count total is not meaningful.
         // formatBytes expects kB; /proc counters are bytes.
         this.rxTotalLabel.text = formatBytes(net.rxTotal / 1024);
         this.txTotalLabel.text = formatBytes(net.txTotal / 1024);
@@ -910,8 +1258,6 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
         refreshBtn.connect('clicked', () => indicator._refreshAll());
         box.add_child(refreshBtn);
 
-        box.add_child(new St.Widget({width: 12}));
-
         // System Monitor button
         const monitorBtn = this._makeButton(
             'utilities-system-monitor-symbolic', 'System Monitor');
@@ -920,8 +1266,6 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
             this._launchSystemMonitor();
         });
         box.add_child(monitorBtn);
-
-        box.add_child(new St.Widget({width: 12}));
 
         // Preferences button
         const prefsBtn = this._makeButton(
@@ -1000,6 +1344,8 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         // ── Build panel layout ──
         this._panelBox = new St.BoxLayout({
             style_class: 'smp-panel-box panel-status-indicators-box',
+            x_expand: true,
+            x_align: Clutter.ActorAlign.CENTER,
         });
         this.add_child(this._panelBox);
 
@@ -1077,8 +1423,18 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._cpuCard = new CpuCardItem(this._extension);
         this.menu.addMenuItem(this._cpuCard);
 
+        // Memory and Disk share a single horizontal row.
         this._memCard = new MemoryCardItem(this._extension);
-        this.menu.addMenuItem(this._memCard);
+        this._diskCard = new DiskCardItem(this._extension);
+
+        this._memDiskRow = new PopupMenu.PopupBaseMenuItem({
+            reactive: false,
+            can_focus: false,
+            style_class: 'smp-card-row',
+        });
+        this._memDiskRow.add_child(this._memCard);
+        this._memDiskRow.add_child(this._diskCard);
+        this.menu.addMenuItem(this._memDiskRow);
 
         // Temperature and Network share a single horizontal row.
         this._tempCard = new TempCardItem(this._extension);
@@ -1106,6 +1462,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         // Dropdown menu card toggles.
         const showCpuCard = this._settings.get_boolean('show-cpu-card');
         const showMemCard = this._settings.get_boolean('show-memory-card');
+        const showDiskCard = this._settings.get_boolean('show-disk-card');
         const showTempCard = this._settings.get_boolean('show-temperature-card');
         const showNetCard = this._settings.get_boolean('show-network-card');
         const showIcons = this._settings.get_boolean('show-icons');
@@ -1128,9 +1485,11 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
         this._cpuCard.visible = showCpuCard;
         this._memCard.visible = showMemCard;
+        this._diskCard.visible = showDiskCard;
         this._tempCard.visible = showTempCard;
         this._netCard.visible = showNetCard;
-        // Hide the shared row entirely when neither card is shown.
+        // Hide each shared row entirely when neither of its cards is shown.
+        this._memDiskRow.visible = showMemCard || showDiskCard;
         this._tempNetRow.visible = showTempCard || showNetCard;
 
         // Restart the timer to pick up any refresh-interval change.
@@ -1163,6 +1522,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     _refreshAll() {
         this._refreshCpu();
         this._refreshMemory();
+        this._refreshDisk();
         this._refreshTemperature();
         this._refreshNetwork();
     }
@@ -1188,6 +1548,21 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             this._memCard.update(mem);
         } catch (e) {
             console.error('System Monitor Panel: memory refresh failed', e);
+        }
+    }
+
+    _refreshDisk() {
+        // Disk has no panel label, so skip the filesystem stat calls entirely
+        // while the card is hidden.
+        if (!this._diskCard.visible)
+            return;
+
+        try {
+            const includeExternal = this._settings.get_boolean('show-external-disks');
+            const disks = this._metrics.getDiskUsage(includeExternal);
+            this._diskCard.update(disks, this._metrics.getOverallDiskUsage(disks));
+        } catch (e) {
+            console.error('System Monitor Panel: disk refresh failed', e);
         }
     }
 
@@ -1217,12 +1592,14 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
     _refreshNetwork() {
         try {
+            const useBits = this._settings.get_string('network-unit') === 'bits';
+
             const net = this._metrics.getNetworkSpeed();
             this._netBox.label.text =
-                `↓${formatSpeedCompact(net.rxSpeed)} ↑${formatSpeedCompact(net.txSpeed)}`;
+                `↓${formatSpeedCompact(net.rxSpeed, useBits)} ↑${formatSpeedCompact(net.txSpeed, useBits)}`;
             // Network has no percentage scale, so keep the panel label neutral.
             this._setPanelLabelColor(this._netBox.label, 0);
-            this._netCard.update(net);
+            this._netCard.update(net, useBits);
         } catch (e) {
             console.error('System Monitor Panel: network refresh failed', e);
         }
@@ -1266,14 +1643,60 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
 /* ── Extension Entry Point ────────────────────── */
 
+/**
+ * Where each panel-position value lands: which of the panel's boxes, and at
+ * which index inside it. A null index means "append to the end of the box".
+ */
+const PANEL_POSITIONS = {
+    'far-left': {box: '_leftBox', index: 0},
+    'left': {box: '_leftBox', index: null},
+    'right': {box: '_rightBox', index: 0},
+    'far-right': {box: '_rightBox', index: null},
+};
+
 export default class SystemMonitorPanelExtension extends Extension {
     enable() {
+        this._settings = this.getSettings();
         this._indicator = new SystemMonitorIndicator(this);
+
+        // Register the indicator (claims the role), then move its container to
+        // the configured box/index.
         Main.panel.addToStatusArea(this.uuid, this._indicator);
+        this._applyPosition();
+
+        this._positionChangedId = this._settings.connect(
+            'changed::panel-position', () => this._applyPosition());
+    }
+
+    _applyPosition() {
+        if (!this._indicator)
+            return;
+
+        const key = this._settings.get_string('panel-position');
+        const {box, index} = PANEL_POSITIONS[key] ?? PANEL_POSITIONS['right'];
+
+        const targetBox = Main.panel[box];
+        if (!targetBox) {
+            console.error(`System Monitor Panel: unknown panel box "${box}"`);
+            return;
+        }
+
+        // Move rather than re-calling addToStatusArea, which would throw on
+        // the already-claimed role. Detach first so the append index below
+        // reflects the box without our own container in it.
+        const container = this._indicator.container;
+        container.get_parent()?.remove_child(container);
+        targetBox.insert_child_at_index(
+            container, index ?? targetBox.get_n_children());
     }
 
     disable() {
+        if (this._positionChangedId) {
+            this._settings.disconnect(this._positionChangedId);
+            this._positionChangedId = null;
+        }
         this._indicator?.destroy();
         this._indicator = null;
+        this._settings = null;
     }
 }

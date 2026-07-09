@@ -10,13 +10,17 @@
 }
 
 .smp-metric-box {
-  spacing: 4px;
+  spacing: 2px;
   padding: 0 1px;
 }
 
+/* Cancel the horizontal padding/margin that the shell's system-status-icon
+   class adds, so `spacing` alone controls the icon-to-label gap. */
 .smp-metric-icon {
   icon-size: 14px;
   -st-icon-style: symbolic;
+  padding: 0;
+  margin: 0;
 }
 
 .smp-metric-label {
@@ -117,6 +121,13 @@
 } /* Purple */
 .smp-color-mem-bg {
   background-color: #c061cb;
+}
+
+.smp-color-disk {
+  color: #ffa348;
+} /* Orange */
+.smp-color-disk-bg {
+  background-color: #ffa348;
 }
 
 .smp-color-temp {
@@ -253,6 +264,64 @@
   height: 5px;
 }
 
+/* Narrower swap bar for the half-width Memory card */
+.smp-swap-bar-bg-half {
+  width: 220px;
+}
+
+/* --- Disk Filesystem List --- */
+
+.smp-disks-container {
+  padding-top: 4px;
+  spacing: 7px;
+}
+
+.smp-disk-entry {
+  spacing: 3px;
+}
+
+.smp-disk-row {
+  spacing: 5px;
+}
+
+.smp-disk-name {
+  font-size: 10.5px;
+  color: #eeeeee;
+}
+
+/* Marks a removable/USB drive in the filesystem list */
+.smp-disk-badge {
+  font-size: 8px;
+  font-weight: bold;
+  color: #ffa348;
+  background-color: rgba(255, 163, 72, 0.15);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.smp-disk-percent {
+  font-size: 10.5px;
+  font-weight: bold;
+  color: #eeeeee;
+}
+
+.smp-disk-bar-bg {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+  height: 5px;
+  width: 220px;
+}
+
+.smp-disk-bar-fill {
+  border-radius: 3px;
+  height: 5px;
+}
+
+.smp-disk-detail {
+  font-size: 9.5px;
+  color: #9a9a9a;
+}
+
 /* --- Temperature Sensors List --- */
 
 .smp-sensors-container {
@@ -294,13 +363,14 @@
 
 /* --- Footer Layout (Quick Settings buttons) --- */
 
+/* 4px on every side matches the cards' 4px margin, so the buttons line up
+   with the card edges and the top gap matches the 8px used elsewhere. */
 .smp-footer {
-  /* 4px top pairs with the row's 4px bottom margin for the same 8px gap. */
-  padding: 4px 8px;
+  padding: 4px;
 }
 
 .smp-footer-box {
-  spacing: 0;
+  spacing: 8px;
 }
 
 .smp-footer-button {

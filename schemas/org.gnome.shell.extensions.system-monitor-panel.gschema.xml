@@ -16,6 +16,22 @@
       <description>Display temperature in "celsius" or "fahrenheit".</description>
     </key>
 
+    <key name="network-unit" type="s">
+      <default>'bytes'</default>
+      <summary>Network speed unit</summary>
+      <description>Display network speed in "bytes" (KB/s, MB/s) or "bits" (kbps, Mbps).</description>
+    </key>
+
+    <key name="panel-position" type="s">
+      <default>'right'</default>
+      <summary>Panel position</summary>
+      <description>
+        Where to place the indicator in the top panel: "far-left" (start of the
+        left box), "left" (end of the left box), "right" (start of the right
+        box) or "far-right" (end of the right box).
+      </description>
+    </key>
+
     <key name="show-cpu" type="b">
       <default>true</default>
       <summary>Show CPU usage</summary>
@@ -50,6 +66,21 @@
       <default>true</default>
       <summary>Show memory card</summary>
       <description>Whether to show the memory card in the dropdown menu.</description>
+    </key>
+
+    <key name="show-disk-card" type="b">
+      <default>true</default>
+      <summary>Show disk card</summary>
+      <description>Whether to show the disk usage card in the dropdown menu.</description>
+    </key>
+
+    <key name="show-external-disks" type="b">
+      <default>false</default>
+      <summary>Show external disks</summary>
+      <description>
+        Whether the disk card also lists removable and external drives (USB,
+        SD cards and anything auto-mounted under /run/media, /media or /mnt).
+      </description>
     </key>
 
     <key name="show-temperature-card" type="b">

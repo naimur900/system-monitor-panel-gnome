@@ -14,12 +14,18 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
-        window.set_default_size(480, 560);
+        window.set_default_size(540, 640);
 
         // ── General Page ──
+        // Adw.PreferencesPage has no padding property; margins inset its
+        // content so the groups sit further from the window edges.
         const page = new Adw.PreferencesPage({
             title: 'System Monitor Panel',
             icon_name: 'utilities-system-monitor-symbolic',
+            margin_top: 12,
+            margin_bottom: 12,
+            margin_start: 18,
+            margin_end: 18,
         });
         window.add(page);
 
@@ -74,12 +80,63 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         tempUnitRow.set_activatable_widget(tempUnitDropdown);
         generalGroup.add(tempUnitRow);
 
+        // Network unit
+        const netUnitRow = new Adw.ActionRow({
+            title: 'Network Speed Unit',
+            subtitle: 'Choose between bytes per second and bits per second',
+        });
+
+        const netUnitDropdown = new Gtk.DropDown({
+            model: Gtk.StringList.new(['Bytes (KB/s, MB/s)', 'Bits (kbps, Mbps)']),
+            valign: Gtk.Align.CENTER,
+        });
+
+        // Set current value
+        const currentNetUnit = settings.get_string('network-unit');
+        netUnitDropdown.set_selected(currentNetUnit === 'bits' ? 1 : 0);
+
+        netUnitDropdown.connect('notify::selected', (dropdown) => {
+            const idx = dropdown.get_selected();
+            settings.set_string('network-unit', idx === 1 ? 'bits' : 'bytes');
+        });
+
+        netUnitRow.add_suffix(netUnitDropdown);
+        netUnitRow.set_activatable_widget(netUnitDropdown);
+        generalGroup.add(netUnitRow);
+
         // ── Top Panel Visibility Group ──
         const visGroup = new Adw.PreferencesGroup({
             title: 'Top Panel',
-            description: 'Choose which metrics appear in the top panel',
+            description: 'Choose where the indicator sits and which metrics appear',
         });
         page.add(visGroup);
+
+        // Panel position. Order matches the on-screen left-to-right order.
+        const POSITION_VALUES = ['far-left', 'left', 'right', 'far-right'];
+
+        const positionRow = new Adw.ActionRow({
+            title: 'Panel Position',
+            subtitle: 'Where the indicator appears in the top panel',
+        });
+
+        const positionDropdown = new Gtk.DropDown({
+            model: Gtk.StringList.new(['Far Left', 'Left', 'Right', 'Far Right']),
+            valign: Gtk.Align.CENTER,
+        });
+
+        // Set current value, falling back to 'right' for an unknown string.
+        const currentPos = POSITION_VALUES.indexOf(settings.get_string('panel-position'));
+        positionDropdown.set_selected(currentPos === -1
+            ? POSITION_VALUES.indexOf('right')
+            : currentPos);
+
+        positionDropdown.connect('notify::selected', (dropdown) => {
+            settings.set_string('panel-position', POSITION_VALUES[dropdown.get_selected()]);
+        });
+
+        positionRow.add_suffix(positionDropdown);
+        positionRow.set_activatable_widget(positionDropdown);
+        visGroup.add(positionRow);
 
         // Show CPU
         const cpuRow = new Adw.SwitchRow({
@@ -165,6 +222,38 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
             Gio.SettingsBindFlags.DEFAULT
         );
         cardGroup.add(memCardRow);
+
+        // Show Disk Card
+        const diskCardRow = new Adw.SwitchRow({
+            title: 'Show Disk Card',
+            subtitle: 'Display the disk usage card in the dropdown',
+        });
+        settings.bind(
+            'show-disk-card',
+            diskCardRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        cardGroup.add(diskCardRow);
+
+        // Show External Disks — only meaningful while the disk card is shown.
+        const externalDisksRow = new Adw.SwitchRow({
+            title: 'Show External Disks',
+            subtitle: 'Include removable and USB drives in the disk card',
+        });
+        settings.bind(
+            'show-external-disks',
+            externalDisksRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        settings.bind(
+            'show-disk-card',
+            externalDisksRow,
+            'sensitive',
+            Gio.SettingsBindFlags.GET
+        );
+        cardGroup.add(externalDisksRow);
 
         // Show Temperature Card
         const tempCardRow = new Adw.SwitchRow({
