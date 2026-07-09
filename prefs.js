@@ -1,7 +1,11 @@
 /* ============================================
    System Monitor Panel — prefs.js
    GNOME 50 Preferences UI (libadwaita)
-   ============================================ */
+   ============================================
+
+   SPDX-FileCopyrightText: 2026 Naimur Rahman
+   SPDX-License-Identifier: GPL-2.0-or-later
+*/
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
@@ -313,18 +317,5 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
             Gio.SettingsBindFlags.DEFAULT
         );
         displayGroup.add(iconsRow);
-
-        // Show Labels
-        // const labelsRow = new Adw.SwitchRow({
-        //     title: 'Show Text Labels',
-        //     subtitle: 'Display text values next to icons',
-        // });
-        // settings.bind(
-        //     'show-labels',
-        //     labelsRow,
-        //     'active',
-        //     Gio.SettingsBindFlags.DEFAULT
-        // );
-        // displayGroup.add(labelsRow);
     }
 }

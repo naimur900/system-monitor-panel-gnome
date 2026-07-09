@@ -15,7 +15,7 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 - **Celsius or Fahrenheit** temperature display.
 - **Bytes or bits** network speed display (MB/s or Mbps).
 - **Configurable panel position** — either end of the left or right panel box.
-- **Toggle any metric** on or off, both in the panel and in the dropdown, plus options to hide icons or text labels.
+- **Toggle any metric** on or off, both in the panel and in the dropdown, plus an option to hide icons.
 - **Manual refresh** button in the dropdown footer.
 
 ## Requirements
@@ -54,6 +54,26 @@ cp -r . ~/.local/share/gnome-shell/extensions/system-monitor-panel@naimur
 gnome-extensions enable system-monitor-panel@naimur
 ```
 
+### Option 3 — from extensions.gnome.org
+
+Install from the extension's page on [extensions.gnome.org](https://extensions.gnome.org/).
+
+## Packaging for extensions.gnome.org
+
+Build the upload bundle with the official packer, which compiles the schema and
+excludes development files:
+
+```bash
+gnome-extensions pack --force \
+  --extra-source=icons \
+  --extra-source=LICENSE \
+  --schema=schemas/org.gnome.shell.extensions.system-monitor-panel.gschema.xml
+```
+
+This writes `system-monitor-panel@naimur.shell-extension.zip`, ready to upload.
+Do not add a `version` field to [metadata.json](metadata.json) — the site assigns
+version numbers itself.
+
 ## Applying changes / reloading
 
 After installing you need to restart GNOME Shell so it picks up the extension:
@@ -80,7 +100,7 @@ gnome-extensions prefs system-monitor-panel@naimur
 | `show-cpu` / `-memory` / `-disk` / `-temperature` / `-network` | `true` | Panel indicator for each metric. |
 | `show-*-card` | `true` | Dropdown card for each metric. |
 | `show-external-disks` | `false` | Include removable/USB drives in the disk card. |
-| `show-icons` / `show-labels` | `true` | Hide icons or text in the panel. |
+| `show-icons` | `true` | Hide icons in the panel. |
 
 Settings apply immediately; no reload is needed.
 
@@ -122,4 +142,4 @@ gnome-extensions info system-monitor-panel@naimur
 
 ## License
 
-No license file is currently included in this repository.
+GPL-2.0-or-later. See [LICENSE](LICENSE).

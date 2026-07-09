@@ -1,7 +1,11 @@
 /* ============================================
    System Monitor Panel — extension.js
    GNOME 50 Shell Extension
-   ============================================ */
+   ============================================
+
+   SPDX-FileCopyrightText: 2026 Naimur Rahman
+   SPDX-License-Identifier: GPL-2.0-or-later
+*/
 
 import GObject from 'gi://GObject';
 import GLib from 'gi://GLib';
@@ -1614,7 +1618,6 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         const showTempCard = this._settings.get_boolean('show-temperature-card');
         const showNetCard = this._settings.get_boolean('show-network-card');
         const showIcons = this._settings.get_boolean('show-icons');
-        const showLabels = this._settings.get_boolean('show-labels');
 
         this._cpuBox.container.visible = showCpu;
         this._memBox.container.visible = showMem;
@@ -1622,10 +1625,8 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._tempBox.container.visible = showTemp;
         this._netBox.container.visible = showNet;
 
-        for (const box of [this._cpuBox, this._memBox, this._diskBox, this._tempBox, this._netBox]) {
+        for (const box of [this._cpuBox, this._memBox, this._diskBox, this._tempBox, this._netBox])
             box.icon.visible = showIcons;
-            box.label.visible = showLabels;
-        }
 
         this._cpuCard.visible = showCpuCard;
         this._memCard.visible = showMemCard;

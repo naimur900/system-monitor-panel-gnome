@@ -107,11 +107,5 @@
       <description>Whether to show icons next to metric values in the panel.</description>
     </key>
 
-    <key name="show-labels" type="b">
-      <default>true</default>
-      <summary>Show text labels</summary>
-      <description>Whether to show text values next to icons in the panel.</description>
-    </key>
-
   </schema>
 </schemalist>
