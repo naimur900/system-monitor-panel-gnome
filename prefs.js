@@ -14,7 +14,7 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
-        window.set_default_size(680, 780);
+        window.set_default_size(780, 780);
 
         // ── General Page ──
         // Adw.PreferencesPage has no padding property; margins inset its
