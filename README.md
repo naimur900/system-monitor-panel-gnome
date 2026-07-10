@@ -4,22 +4,20 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 
 <p align="center">
   <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/">
-    <img src="https://raw.githubusercontent.com/GNOME/extensions-web/master/extensions-web/static/images/egs-logo.svg"
-         alt="Get it on GNOME Extensions"
-         height="80">
+    <img src="public/gnome-logo.png"
+         alt="Install from GNOME Extensions"
+         width="260">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/">
-    <strong>Install from GNOME Extensions</strong>
-  </a>
+  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/"><strong>Install from GNOME Extensions →</strong></a>
 </p>
 
 <p align="center">
-  <img src="public/img-1.png" alt="The top panel showing CPU usage, memory usage and temperature indicators" width="700">
+  <img src="https://img.shields.io/badge/GNOME-48--50-4A86CF?logo=gnome&logoColor=white" alt="GNOME Shell">
+  <img src="https://img.shields.io/badge/License-GPL--2.0-green.svg" alt="License">
 </p>
-<p align="center"><em>The at-a-glance indicators in the top panel.</em></p>
 
 ## Features
 
@@ -85,26 +83,26 @@ assigns version numbers itself.
 
 ## Settings
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `refresh-interval` | `30` | Seconds between updates (1–300) |
-| `temperature-unit` | `celsius` | `celsius` or `fahrenheit` |
-| `network-unit` | `bytes` | `bytes` (MB/s) or `bits` (Mbps) |
-| `panel-position` | `right` | `far-left`, `left`, `right`, or `far-right` |
-| `show-cpu` / `-memory` / `-disk` / `-temperature` / `-network` | on | Panel indicator for each metric |
-| `show-*-card` | on | Dropdown card for each metric |
-| `show-external-disks` | off | Include removable/USB drives in the disk card |
-| `show-icons` | on | Icons in the panel |
+| Setting                                                        | Default   | Description                                   |
+| -------------------------------------------------------------- | --------- | --------------------------------------------- |
+| `refresh-interval`                                             | `30`      | Seconds between updates (1–300)               |
+| `temperature-unit`                                             | `celsius` | `celsius` or `fahrenheit`                     |
+| `network-unit`                                                 | `bytes`   | `bytes` (MB/s) or `bits` (Mbps)               |
+| `panel-position`                                               | `right`   | `far-left`, `left`, `right`, or `far-right`   |
+| `show-cpu` / `-memory` / `-disk` / `-temperature` / `-network` | on        | Panel indicator for each metric               |
+| `show-*-card`                                                  | on        | Dropdown card for each metric                 |
+| `show-external-disks`                                          | off       | Include removable/USB drives in the disk card |
+| `show-icons`                                                   | on        | Icons in the panel                            |
 
 Settings apply immediately; no reload is needed.
 
 ## Layout
 
-| File | Purpose |
-| --- | --- |
+| File                                 | Purpose                                                 |
+| ------------------------------------ | ------------------------------------------------------- |
 | [src/extension.js](src/extension.js) | Panel indicators, dropdown dashboard, metric collection |
-| [src/prefs.js](src/prefs.js) | Preferences window |
-| [src/icons/](src/icons/) | Symbolic panel icons |
+| [src/prefs.js](src/prefs.js)         | Preferences window                                      |
+| [src/icons/](src/icons/)             | Symbolic panel icons                                    |
 
 ## License
 
