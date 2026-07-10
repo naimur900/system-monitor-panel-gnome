@@ -20,88 +20,75 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 
 ## Requirements
 
-- **GNOME Shell 48–50** (see `shell-version` in [src/metadata.json](src/metadata.json)).
-- `glib-compile-schemas` (ships with GLib / `glib2-devel`), used to compile the settings schema.
+- GNOME Shell 48, 49 or 50
+- `glib-compile-schemas` (ships with GLib / `glib2-devel`), used to compile the settings schema
 
 Temperature and disk readings come from `/sys/class/thermal`, `/sys/class/hwmon`, and `/proc/mounts`. Machines that expose no readable sensor show `N/A` rather than failing.
 
-## Installation
+## Install
 
-### Option 1 — make install (recommended for development)
-
-The included [Makefile](Makefile) compiles the settings schema and copies the extension into your local extensions directory:
-
-```bash
+```sh
 make install
 ```
 
-Then log out and back in (Wayland) and enable the extension:
+Then log out and back in — GNOME Shell only scans for new extensions at startup,
+and on Wayland it cannot be restarted in place. After logging back in:
 
-```bash
+```sh
 make enable
+make prefs     # open the preferences window
 ```
 
-### Option 2 — manual install
+Once published, the extension can also be installed from its page on
+[extensions.gnome.org](https://extensions.gnome.org).
 
-```bash
-# 1. Compile the GSettings schema
-glib-compile-schemas src/schemas/
+## Development
 
-# 2. Copy (or symlink) into the extensions directory
-cp -r src/. ~/.local/share/gnome-shell/extensions/system-monitor-panel@naimur
-
-# 3. Enable it
-gnome-extensions enable system-monitor-panel@naimur
+```sh
+make check     # syntax-check the JS, schema and metadata
+make schemas   # compile the GSettings schema
+make pack      # build a distributable zip for extensions.gnome.org
+make logs      # follow this extension's shell log output
+make uninstall
 ```
 
-### Option 3 — from extensions.gnome.org
+Note that changes to an already-loaded extension also require a log out and back
+in on Wayland, because the shell caches ES modules for the life of the process.
 
-Install from the extension's page on [extensions.gnome.org](https://extensions.gnome.org/).
+Do not add a `version` field to [src/metadata.json](src/metadata.json) — extensions.gnome.org
+assigns version numbers itself.
 
-## Packaging for extensions.gnome.org
+## Settings
 
-Build the upload bundle with the official packer (wrapped by the Makefile), which
-compiles the schema and excludes development files:
-
-```bash
-make pack
-```
-
-This writes `system-monitor-panel@naimur.shell-extension.zip`, ready to upload.
-Do not add a `version` field to [src/metadata.json](src/metadata.json) — the site assigns
-version numbers itself.
-
-## Applying changes / reloading
-
-After installing you need to restart GNOME Shell so it picks up the extension:
-
-- **Wayland:** log out and log back in (GNOME Shell cannot be restarted in place on Wayland).
-- **X11:** press `Alt`+`F2`, type `r`, and press `Enter`.
-
-Editing `extension.js` while the extension is enabled has no effect until the Shell reloads — disabling and re-enabling the extension is not enough.
-
-## Configuration
-
-Open the preferences UI to adjust settings:
-
-```bash
-gnome-extensions prefs system-monitor-panel@naimur
-```
-
-| Setting | Default | Notes |
-|---------|---------|-------|
-| `refresh-interval` | `30` | Seconds between updates (1–300). |
-| `temperature-unit` | `celsius` | `celsius` or `fahrenheit`. |
-| `network-unit` | `bytes` | `bytes` (MB/s) or `bits` (Mbps). |
-| `panel-position` | `right` | `far-left`, `left`, `right`, or `far-right`. |
-| `show-cpu` / `-memory` / `-disk` / `-temperature` / `-network` | `true` | Panel indicator for each metric. |
-| `show-*-card` | `true` | Dropdown card for each metric. |
-| `show-external-disks` | `false` | Include removable/USB drives in the disk card. |
-| `show-icons` | `true` | Hide icons in the panel. |
+| Setting | Default | Description |
+| --- | --- | --- |
+| `refresh-interval` | `30` | Seconds between updates (1–300) |
+| `temperature-unit` | `celsius` | `celsius` or `fahrenheit` |
+| `network-unit` | `bytes` | `bytes` (MB/s) or `bits` (Mbps) |
+| `panel-position` | `right` | `far-left`, `left`, `right`, or `far-right` |
+| `show-cpu` / `-memory` / `-disk` / `-temperature` / `-network` | on | Panel indicator for each metric |
+| `show-*-card` | on | Dropdown card for each metric |
+| `show-external-disks` | off | Include removable/USB drives in the disk card |
+| `show-icons` | on | Icons in the panel |
 
 Settings apply immediately; no reload is needed.
 
-## Implementation notes
+## Layout
+
+| File | Purpose |
+| --- | --- |
+| [src/extension.js](src/extension.js) | Panel indicators, dropdown dashboard, metric collection |
+| [src/prefs.js](src/prefs.js) | Preferences window |
+| [src/icons/](src/icons/) | Symbolic panel icons |
+
+## License
+
+GPL-2.0-or-later. See [LICENSE](LICENSE).
+
+This is the license required for submission to
+[extensions.gnome.org](https://extensions.gnome.org).
+
+## Notes
 
 The extension runs inside the GNOME Shell compositor process, so everything it does on a timer is on the critical path for desktop responsiveness. A few consequences shape the code in [src/extension.js](src/extension.js):
 
@@ -110,33 +97,3 @@ The extension runs inside the GNOME Shell compositor process, so everything it d
 - **Nothing is collected for pixels that will not be drawn.** A metric is read only when its panel label is visible, or its card is visible and the dropdown is actually open. Dropdown rows are reused across refreshes rather than rebuilt.
 
 Together these keep a short refresh interval (1–5 seconds) about as cheap as the 30-second default.
-
-## Troubleshooting
-
-View the extension's logs live:
-
-```bash
-journalctl -f -o cat /usr/bin/gnome-shell
-```
-
-Check that the extension loaded and is active:
-
-```bash
-gnome-extensions info system-monitor-panel@naimur
-```
-
-## Project structure
-
-| File | Purpose |
-|------|---------|
-| [src/extension.js](src/extension.js) | Main extension logic — panel indicators, dropdown, metric collection. |
-| [src/prefs.js](src/prefs.js) | libadwaita preferences window. |
-| [src/stylesheet.css](src/stylesheet.css) | Panel and dropdown styling. |
-| [src/metadata.json](src/metadata.json) | Extension metadata (UUID, name, shell version). |
-| [src/schemas/](src/schemas/) | GSettings schema for user preferences. |
-| [src/icons/](src/icons/) | Symbolic panel icons. |
-| [Makefile](Makefile) | Development shortcuts: `install`, `pack`, `check`, `enable`, `logs`, … |
-
-## License
-
-GPL-2.0-or-later. See [LICENSE](LICENSE).
