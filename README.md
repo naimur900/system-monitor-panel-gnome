@@ -2,6 +2,11 @@
 
 A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, network speed, and device temperature** right in the top panel, with a rich dropdown dashboard for detailed stats.
 
+<p align="center">
+  <img src="public/img-1.png" alt="The top panel showing CPU usage, memory usage and temperature indicators" width="700">
+</p>
+<p align="center"><em>The at-a-glance indicators in the top panel.</em></p>
+
 ## Features
 
 - **At-a-glance panel indicators** for CPU, memory, disk, network, and temperature, with color-coded values (normal / warning / critical).
@@ -17,6 +22,11 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 - **Configurable panel position** — either end of the left or right panel box.
 - **Toggle any metric** on or off, both in the panel and in the dropdown, plus an option to hide icons.
 - **Manual refresh** button in the dropdown footer.
+
+<p align="center">
+  <img src="public/img-2.png" alt="The dropdown dashboard with cards for CPU, memory, disk, temperature and network" width="600">
+</p>
+<p align="center"><em>The dropdown dashboard, with a card per metric.</em></p>
 
 ## Requirements
 
