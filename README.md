@@ -10,7 +10,7 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
   - **Memory** — used/available/free/cached/buffers breakdown and swap usage.
   - **Disk** — combined usage plus a per-filesystem breakdown, with removable drives optionally included and badged `EXT`.
   - **Network** — live download/upload speeds and cumulative totals since boot.
-  - **Temperature** — readings from available hardware sensors, with the CPU package sensor preferred for the headline value.
+  - **Temperature** — readings from the significant hardware sensors (CPU, GPU, chipset, motherboard, drives, Wi‑Fi), one per component, with the CPU package sensor preferred for the headline value.
 - **Configurable refresh interval** (1–300 seconds).
 - **Celsius or Fahrenheit** temperature display.
 - **Bytes or bits** network speed display (MB/s or Mbps).
@@ -27,18 +27,18 @@ Temperature and disk readings come from `/sys/class/thermal`, `/sys/class/hwmon`
 
 ## Installation
 
-### Option 1 — install script (recommended for development)
+### Option 1 — make install (recommended for development)
 
-The included [install.sh](install.sh) compiles the settings schema and symlinks this folder into your local extensions directory:
+The included [Makefile](Makefile) compiles the settings schema and copies the extension into your local extensions directory:
 
 ```bash
-./install.sh
+make install
 ```
 
-Then enable the extension:
+Then log out and back in (Wayland) and enable the extension:
 
 ```bash
-gnome-extensions enable system-monitor-panel@naimur
+make enable
 ```
 
 ### Option 2 — manual install
@@ -60,14 +60,11 @@ Install from the extension's page on [extensions.gnome.org](https://extensions.g
 
 ## Packaging for extensions.gnome.org
 
-Build the upload bundle with the official packer, which compiles the schema and
-excludes development files:
+Build the upload bundle with the official packer (wrapped by the Makefile), which
+compiles the schema and excludes development files:
 
 ```bash
-gnome-extensions pack --force \
-  --extra-source=icons \
-  --extra-source=LICENSE \
-  --schema=schemas/org.gnome.shell.extensions.system-monitor-panel.gschema.xml
+make pack
 ```
 
 This writes `system-monitor-panel@naimur.shell-extension.zip`, ready to upload.
@@ -108,7 +105,7 @@ Settings apply immediately; no reload is needed.
 
 The extension runs inside the GNOME Shell compositor process, so everything it does on a timer is on the critical path for desktop responsiveness. A few consequences shape the code in [extension.js](extension.js):
 
-- **Filesystem usage is queried asynchronously.** `statfs` blocks in uninterruptible sleep on a device that has stopped responding — a drive unplugged without unmounting, say — so a synchronous call would freeze the whole desktop. `query_filesystem_info_async` hands the syscall to a GIO worker thread instead.
+- **All file IO is asynchronous.** `statfs` blocks in uninterruptible sleep on a device that has stopped responding — a drive unplugged without unmounting, say — so a synchronous call would freeze the whole desktop. `query_filesystem_info_async` hands the syscall to a GIO worker thread instead, and the `/proc` and `/sys` readings go through `load_contents_async` the same way, keeping every read off the compositor thread.
 - **Static metadata is cached.** Sensor paths are discovered once; mount points and each device's removable flag are cached and invalidated by `GioUnix.MountMonitor`. Only the values themselves are re-read on each refresh.
 - **Nothing is collected for pixels that will not be drawn.** A metric is read only when its panel label is visible, or its card is visible and the dropdown is actually open. Dropdown rows are reused across refreshes rather than rebuilt.
 
@@ -138,7 +135,7 @@ gnome-extensions info system-monitor-panel@naimur
 | [metadata.json](metadata.json) | Extension metadata (UUID, name, shell version). |
 | [schemas/](schemas/) | GSettings schema for user preferences. |
 | [icons/](icons/) | Symbolic panel icons. |
-| [install.sh](install.sh) | Compiles the schema and installs via symlink. |
+| [Makefile](Makefile) | Development shortcuts: `install`, `pack`, `check`, `enable`, `logs`, … |
 
 ## License
 

@@ -22,21 +22,24 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 /* ── Helpers ──────────────────────────────────── */
 
+// Makes load_contents_async() awaitable; it resolves to [contents, etag].
+Gio._promisify(Gio.File.prototype, 'load_contents_async');
+
 const DECODER = new TextDecoder('utf-8');
 
 /**
- * Read a small virtual file synchronously.
- * Perfectly fine for /proc and /sys reads.
+ * Read a small virtual file on a GIO worker thread.
+ * Resolves to the file's text, or null if the file is missing or unreadable —
+ * not every sensor exists on every machine.
  */
-function readFile(path) {
+async function readFile(path) {
     try {
-        const [ok, contents] = GLib.file_get_contents(path);
-        if (ok)
-            return DECODER.decode(contents);
+        const [contents] = await Gio.File.new_for_path(path)
+            .load_contents_async(null);
+        return DECODER.decode(contents);
     } catch (_e) {
-        // file may not exist on all systems
+        return null;
     }
-    return null;
 }
 
 /**
@@ -184,7 +187,7 @@ function unescapeMountField(field) {
  * `removable` flag. Device-mapper nodes (LUKS, LVM) have no /sys/class/block
  * symlink to walk, so those are only caught by the mount-point check.
  */
-function isExternalDisk(device, mountPoint) {
+async function isExternalDisk(device, mountPoint) {
     if (EXTERNAL_MOUNT_PREFIXES.some(p => mountPoint.startsWith(p)))
         return true;
 
@@ -204,12 +207,12 @@ function isExternalDisk(device, mountPoint) {
 
     // Partitions carry no `removable` flag — it lives on the parent disk, which
     // is the directory containing the partition in the resolved sysfs path.
-    let removable = readFile(`/sys/class/block/${blockName}/removable`);
+    let removable = await readFile(`/sys/class/block/${blockName}/removable`);
     if (removable === null) {
         const segments = target.split('/');
         const diskName = segments[segments.length - 2];
         if (diskName)
-            removable = readFile(`/sys/class/block/${diskName}/removable`);
+            removable = await readFile(`/sys/class/block/${diskName}/removable`);
     }
 
     return removable !== null && removable.trim() === '1';
@@ -265,8 +268,11 @@ function queryFilesystemUsage(mounts, cancellable, callback) {
                     // Cancelled, unreadable, or a stale mount — leave it out.
                 }
 
-                // Only the last callback reports, so the UI sees one complete set.
-                if (--remaining === 0 && !cancellable.is_cancelled())
+                // Only the last callback reports, so the UI sees one complete
+                // set. Cancelled queries report too (each entry stays null) so
+                // an awaiting caller always resumes; it checks destroyed state
+                // itself before touching any UI.
+                if (--remaining === 0)
                     callback(results.filter(r => r !== null));
             });
     });
@@ -337,6 +343,7 @@ const TEMP_FRIENDLY_NAMES = {
     'nvme': 'NVMe SSD',
     'INT3400 Thermal': 'Thermal Policy',
     'amdgpu': 'GPU',
+    'radeon': 'GPU',
     'nouveau': 'GPU',
 };
 
@@ -357,6 +364,29 @@ const CPU_HWMON_CHIPS = new Set(['coretemp', 'k10temp', 'zenpower']);
 function isCpuPackageSensor(raw) {
     return raw === 'x86_pkg_temp' || raw === 'Package id 0' ||
         raw === 'Tctl' || raw === 'Tdie';
+}
+
+/**
+ * Component category for a raw sensor id — a thermal-zone type, hwmon chip
+ * name or hwmon channel label — or null for sensors that are not worth a
+ * per-refresh read: per-core duplicates, per-CCD temps, opaque ACPI zones
+ * (SEN1, B0D4), thermal-policy pseudo-zones and the like.
+ */
+function tempSensorCategory(raw) {
+    if (isCpuPackageSensor(raw) || CPU_HWMON_CHIPS.has(raw) ||
+        raw.toLowerCase().includes('cpu'))
+        return 'cpu';
+    if (raw.startsWith('pch_'))
+        return 'chipset';
+    if (raw === 'acpitz')
+        return 'motherboard';
+    if (raw.startsWith('iwlwifi'))
+        return 'wifi';
+    if (raw === 'Composite' || raw === 'drivetemp')
+        return 'drive';
+    if (raw === 'amdgpu' || raw === 'radeon' || raw === 'nouveau')
+        return 'gpu';
+    return null;
 }
 
 
@@ -395,8 +425,8 @@ class SystemMetrics {
      * Read CPU usage from /proc/stat.
      * Returns { overall: Number, cores: [Number] } as percentages.
      */
-    getCpuUsage() {
-        const data = readFile('/proc/stat');
+    async getCpuUsage() {
+        const data = await readFile('/proc/stat');
         if (!data)
             return {overall: 0, cores: []};
 
@@ -457,13 +487,13 @@ class SystemMetrics {
     /**
      * Read memory info from /proc/meminfo (all values in kB).
      */
-    getMemoryUsage() {
+    async getMemoryUsage() {
         const empty = {
             percent: 0, total: 0, available: 0, used: 0, free: 0,
             buffers: 0, cached: 0, swapTotal: 0, swapUsed: 0, swapPercent: 0,
         };
 
-        const data = readFile('/proc/meminfo');
+        const data = await readFile('/proc/meminfo');
         if (!data)
             return empty;
 
@@ -496,8 +526,8 @@ class SystemMetrics {
      * so they stay correct regardless of how often this is polled.
      * Returns { rxSpeed, txSpeed } in bytes/second and { rxTotal, txTotal } in bytes.
      */
-    getNetworkSpeed() {
-        const data = readFile('/proc/net/dev');
+    async getNetworkSpeed() {
+        const data = await readFile('/proc/net/dev');
         const now = GLib.get_monotonic_time(); // microseconds
         if (!data)
             return {rxSpeed: 0, txSpeed: 0, rxTotal: 0, txTotal: 0};
@@ -561,10 +591,10 @@ class SystemMetrics {
      * re-derives a static hardware property, and the cache is dropped whenever
      * the mount set changes.
      */
-    _isExternal(device, mountPoint) {
+    async _isExternal(device, mountPoint) {
         let external = this._externalCache.get(device);
         if (external === undefined) {
-            external = isExternalDisk(device, mountPoint);
+            external = await isExternalDisk(device, mountPoint);
             this._externalCache.set(device, external);
         }
         return external;
@@ -577,11 +607,11 @@ class SystemMetrics {
      * Cached until Gio.UnixMountMonitor reports a change, so a short refresh
      * interval does not re-parse /proc/mounts and re-walk sysfs every tick.
      */
-    _getMounts() {
+    async _getMounts() {
         if (this._mounts)
             return this._mounts;
 
-        const data = readFile('/proc/mounts');
+        const data = await readFile('/proc/mounts');
         if (!data)
             return [];
 
@@ -609,11 +639,12 @@ class SystemMetrics {
                 continue;
 
             seenDevices.add(device);
+            const isExternal = await this._isExternal(device, mountPoint);
             mounts.push({
                 name: friendlyMountName(mountPoint),
                 mountPoint,
                 device,
-                isExternal: this._isExternal(device, mountPoint),
+                isExternal,
             });
         }
 
@@ -628,17 +659,19 @@ class SystemMetrics {
     }
 
     /**
-     * Collect usage for every mounted filesystem and pass it to `callback`.
+     * Collect usage for every mounted filesystem.
      *
      * External (removable/USB) disks are only included when includeExternal is
-     * true. Sizes are in bytes. The callback receives [{ name, mountPoint,
-     * device, total, used, free, percent, isExternal }]; mounts that cannot be
-     * stat'd are omitted. Asynchronous — see queryFilesystemUsage.
+     * true. Sizes are in bytes. Resolves to [{ name, mountPoint, device,
+     * total, used, free, percent, isExternal }]; mounts that cannot be stat'd
+     * are omitted (all of them, if `cancellable` fires mid-query).
      */
-    getDiskUsage(includeExternal, cancellable, callback) {
-        const mounts = this._getMounts()
+    async getDiskUsage(includeExternal, cancellable) {
+        const mounts = (await this._getMounts())
             .filter(m => includeExternal || !m.isExternal);
-        queryFilesystemUsage(mounts, cancellable, callback);
+        return new Promise(resolve => {
+            queryFilesystemUsage(mounts, cancellable, resolve);
+        });
     }
 
     /**
@@ -659,19 +692,51 @@ class SystemMetrics {
     }
 
     /**
-     * Locate every temperature sensor under /sys/class/thermal and
-     * /sys/class/hwmon. Returns [{ path, name (raw), isCpu }].
+     * Locate the significant temperature sensors under /sys/class/thermal
+     * and /sys/class/hwmon. Returns [{ path, name (display), isCpu }].
      *
      * Both trees are always scanned. Treating hwmon as a fallback only used
      * when thermal_zone came up empty hides the real CPU sensor on machines
      * that expose one useless thermal zone: an AMD box reports acpitz (the
      * motherboard) there while k10temp — the actual CPU — lives under hwmon.
-     * Duplicate readings are collapsed by friendly name at display time.
+     *
+     * Only sensors matching a curated component list — CPU, GPU, chipset,
+     * motherboard, drives, Wi‑Fi — are kept, one per component, so a refresh
+     * reads a handful of files instead of every core, CCD and ACPI zone the
+     * machine exposes. Trees mirroring the same component (x86_pkg_temp vs
+     * coretemp) resolve to whichever was found first. A machine where nothing
+     * matches keeps its readable thermal zones rather than an empty card.
      */
-    _discoverTempSensors() {
+    async _discoverTempSensors() {
         const sensors = [];
 
-        const eachChild = (dirPath, fn) => {
+        // One sensor per component; drives and GPUs can be several distinct
+        // devices, so they dedupe per chip instead.
+        const seen = new Set();
+        const takeSensor = (category, basePath) => {
+            const key = category === 'drive' || category === 'gpu'
+                ? `${category}:${basePath}` : category;
+            if (seen.has(key))
+                return false;
+            seen.add(key);
+            return true;
+        };
+
+        // Repeated components get a numeric suffix ("NVMe SSD 2") so the
+        // display layer, which collapses duplicate names, keeps them apart.
+        const friendlyCounts = new Map();
+        const displayName = raw => {
+            const friendly = friendlyTempName(raw);
+            const n = (friendlyCounts.get(friendly) ?? 0) + 1;
+            friendlyCounts.set(friendly, n);
+            return n === 1 ? friendly : `${friendly} ${n}`;
+        };
+
+        // Listing a /sys/class directory touches only dentries, never a
+        // device, so it stays synchronous; keeping the enumerator's lifetime
+        // inside one call also avoids holding its directory fd across awaits.
+        const listChildren = dirPath => {
+            const names = [];
             let enumerator = null;
             try {
                 enumerator = Gio.File.new_for_path(dirPath).enumerate_children(
@@ -682,7 +747,7 @@ class SystemMetrics {
 
                 let info;
                 while ((info = enumerator.next_file(null)) !== null)
-                    fn(info.get_name());
+                    names.push(info.get_name());
             } catch (_e) {
                 // Tree not present on this system, or it vanished mid-scan.
             } finally {
@@ -690,56 +755,87 @@ class SystemMetrics {
                 // until the enumerator is garbage collected.
                 enumerator?.close(null);
             }
+            return names;
         };
 
-        eachChild('/sys/class/thermal', name => {
+        const fallbackZones = [];
+
+        for (const name of listChildren('/sys/class/thermal')) {
             if (!name.startsWith('thermal_zone'))
-                return;
+                continue;
 
             const basePath = `/sys/class/thermal/${name}`;
-            if (readFile(`${basePath}/temp`) === null)
-                return;
+            if ((await readFile(`${basePath}/temp`)) === null)
+                continue;
 
-            const typeStr = readFile(`${basePath}/type`);
+            const typeStr = await readFile(`${basePath}/type`);
             const raw = typeStr ? typeStr.trim() : name;
+
+            const category = tempSensorCategory(raw);
+            if (!category) {
+                fallbackZones.push({basePath, raw});
+                continue;
+            }
+            if (!takeSensor(category, basePath))
+                continue;
+
             sensors.push({
                 path: `${basePath}/temp`,
-                name: raw,
-                isCpu: isCpuPackageSensor(raw),
+                name: displayName(raw),
+                isCpu: category === 'cpu',
             });
-        });
+        }
 
-        eachChild('/sys/class/hwmon', hwmonName => {
+        for (const hwmonName of listChildren('/sys/class/hwmon')) {
             const basePath = `/sys/class/hwmon/${hwmonName}`;
-            const nameStr = readFile(`${basePath}/name`);
+            const nameStr = await readFile(`${basePath}/name`);
             const chipName = nameStr ? nameStr.trim() : hwmonName;
-            const isCpuChip = CPU_HWMON_CHIPS.has(chipName);
-
-            const chipSensors = [];
 
             // hwmon numbering is not contiguous — a chip may expose temp2_input
             // and temp3_input with no temp1_input — so skip gaps rather than
             // stopping at the first one.
             for (let i = 1; i <= 16; i++) {
                 const path = `${basePath}/temp${i}_input`;
-                if (readFile(path) === null)
+                const labelStr = await readFile(`${basePath}/temp${i}_label`);
+
+                // The channel label decides where a labelled chip like
+                // coretemp is concerned (package vs per-core); the chip name
+                // catches label-less chips like k10temp or amdgpu.
+                let raw = labelStr ? labelStr.trim() : chipName;
+                let category = tempSensorCategory(raw);
+                if (!category && raw !== chipName) {
+                    raw = chipName;
+                    category = tempSensorCategory(raw);
+                }
+                if (!category)
                     continue;
 
-                const labelStr = readFile(`${basePath}/temp${i}_label`);
-                const label = labelStr ? labelStr.trim() : chipName;
-                chipSensors.push({
+                // Probe readability before claiming the component, so a dead
+                // channel does not block a working sibling from representing it.
+                if ((await readFile(path)) === null)
+                    continue;
+                if (!takeSensor(category, basePath))
+                    continue;
+
+                sensors.push({
                     path,
-                    name: label,
-                    isCpu: isCpuPackageSensor(label) || isCpuChip,
+                    name: displayName(raw),
+                    isCpu: category === 'cpu',
                 });
             }
+        }
 
-            // A CPU chip exposes one sensor per core alongside the package
-            // sensor. Reporting all of them would push every other component
-            // out of the card's sensor list, so prefer the package reading.
-            const packages = chipSensors.filter(s => isCpuPackageSensor(s.name));
-            sensors.push(...(isCpuChip && packages.length > 0 ? packages : chipSensors));
-        });
+        // Nothing matched the curated list — exotic hardware with sensors the
+        // classifier does not know. Readable thermal zones beat an empty card.
+        if (sensors.length === 0) {
+            for (const {basePath, raw} of fallbackZones) {
+                sensors.push({
+                    path: `${basePath}/temp`,
+                    name: displayName(raw),
+                    isCpu: false,
+                });
+            }
+        }
 
         return sensors;
     }
@@ -749,31 +845,40 @@ class SystemMetrics {
      * cached; only the temp files themselves are read on each refresh.
      * Returns [{ name (raw), tempC, isCpu }] sorted by temperature descending.
      */
-    getTemperatures() {
+    async getTemperatures() {
+        // Cached as a promise so refreshes that overlap the first discovery
+        // share one sysfs scan instead of each starting their own.
         this._tempSensors ??= this._discoverTempSensors();
+        const sensors = await this._tempSensors;
+
+        // One parallel fan-out: every sensor is its own GIO task, so the
+        // refresh pays a single worker-thread round trip instead of one per
+        // sensor. readFile never rejects, so neither can this.
+        const readings = await Promise.all(
+            sensors.map(sensor => readFile(sensor.path)));
 
         const temps = [];
         let stale = false;
 
-        for (const sensor of this._tempSensors) {
-            const tempStr = readFile(sensor.path);
+        sensors.forEach((sensor, i) => {
+            const tempStr = readings[i];
             if (tempStr === null) {
                 // Sensor went away (module unloaded, device unplugged) —
                 // rebuild the path list on the next refresh.
                 stale = true;
-                continue;
+                return;
             }
 
             const millideg = parseInt(tempStr.trim(), 10);
             if (isNaN(millideg))
-                continue;
+                return;
 
             temps.push({
                 name: sensor.name,
                 tempC: millideg / 1000,
                 isCpu: sensor.isCpu,
             });
-        }
+        });
 
         if (stale)
             this._tempSensors = null;
@@ -1538,9 +1643,10 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._startTimer();
 
         // Seed the CPU and network deltas, then do the first real refresh
-        // shortly after — a delta needs two samples.
-        this._metrics.getCpuUsage();
-        this._metrics.getNetworkSpeed();
+        // shortly after — a delta needs two samples. Results are discarded;
+        // the timed refresh reports any real failure.
+        this._metrics.getCpuUsage().catch(() => {});
+        this._metrics.getNetworkSpeed().catch(() => {});
         this._seedTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 700, () => {
             this._seedTimeoutId = null;
             this._refreshAll();
@@ -1685,8 +1791,8 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         return card.visible && this.menu.isOpen;
     }
 
-    // Each metric is refreshed independently so a failure in one never
-    // blocks the others.
+    // Each metric refreshes independently and concurrently, with its own
+    // error handling, so a slow or failing one never blocks the others.
     _refreshAll() {
         const metrics = [
             ['CPU', this._cpuBox, this._cpuCard, () => this._refreshCpu()],
@@ -1699,16 +1805,17 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         for (const [name, box, card, refresh] of metrics) {
             if (!this._isVisible(box, card))
                 continue;
-            try {
-                refresh();
-            } catch (e) {
+            refresh().catch(e => {
                 console.error(`System Monitor Panel: ${name} refresh failed`, e);
-            }
+            });
         }
     }
 
-    _refreshCpu() {
-        const cpu = this._metrics.getCpuUsage();
+    async _refreshCpu() {
+        const cpu = await this._metrics.getCpuUsage();
+        if (this._destroyed)
+            return;
+
         const overall = Math.round(cpu.overall);
         this._cpuBox.label.text = `${overall}%`;
         setStateClass(this._cpuBox.label, 'smp-label', thresholdClass(overall));
@@ -1717,8 +1824,11 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             this._cpuCard.update(cpu);
     }
 
-    _refreshMemory() {
-        const mem = this._metrics.getMemoryUsage();
+    async _refreshMemory() {
+        const mem = await this._metrics.getMemoryUsage();
+        if (this._destroyed)
+            return;
+
         const percent = Math.round(mem.percent);
         this._memBox.label.text = `${percent}%`;
         setStateClass(this._memBox.label, 'smp-label', thresholdClass(percent));
@@ -1727,7 +1837,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             this._memCard.update(mem);
     }
 
-    _refreshDisk() {
+    async _refreshDisk() {
         // statfs runs on a worker thread, so a tick can land while the previous
         // set of queries is still outstanding on a slow mount. Skip it rather
         // than pile up overlapping queries.
@@ -1737,35 +1847,37 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         const includeExternal = this._settings.get_boolean('show-external-disks');
         this._diskQueryPending = true;
 
-        this._metrics.getDiskUsage(includeExternal, this._cancellable, disks => {
-            this._diskQueryPending = false;
+        try {
+            const disks = await this._metrics.getDiskUsage(
+                includeExternal, this._cancellable);
             if (this._destroyed)
                 return;
 
-            try {
-                const overall = this._metrics.getOverallDiskUsage(disks);
+            const overall = this._metrics.getOverallDiskUsage(disks);
 
-                if (disks.length > 0) {
-                    const percent = Math.round(overall.percent);
-                    this._diskBox.label.text = `${percent}%`;
-                    setStateClass(this._diskBox.label, 'smp-label', thresholdClass(percent));
-                } else {
-                    this._diskBox.label.text = 'N/A';
-                    setStateClass(this._diskBox.label, 'smp-label', thresholdClass(0));
-                }
-
-                if (this._shouldUpdateCard(this._diskCard))
-                    this._diskCard.update(disks, overall);
-            } catch (e) {
-                console.error('System Monitor Panel: disk refresh failed', e);
+            if (disks.length > 0) {
+                const percent = Math.round(overall.percent);
+                this._diskBox.label.text = `${percent}%`;
+                setStateClass(this._diskBox.label, 'smp-label', thresholdClass(percent));
+            } else {
+                this._diskBox.label.text = 'N/A';
+                setStateClass(this._diskBox.label, 'smp-label', thresholdClass(0));
             }
-        });
+
+            if (this._shouldUpdateCard(this._diskCard))
+                this._diskCard.update(disks, overall);
+        } finally {
+            this._diskQueryPending = false;
+        }
     }
 
-    _refreshTemperature() {
+    async _refreshTemperature() {
         const isFahrenheit = this._settings.get_string('temperature-unit') === 'fahrenheit';
 
-        const temps = this._metrics.getTemperatures();
+        const temps = await this._metrics.getTemperatures();
+        if (this._destroyed)
+            return;
+
         const overall = this._metrics.getOverallTemperature(temps);
 
         if (overall) {
@@ -1782,10 +1894,13 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             this._tempCard.update(temps, overall, isFahrenheit);
     }
 
-    _refreshNetwork() {
+    async _refreshNetwork() {
         const useBits = this._settings.get_string('network-unit') === 'bits';
 
-        const net = this._metrics.getNetworkSpeed();
+        const net = await this._metrics.getNetworkSpeed();
+        if (this._destroyed)
+            return;
+
         this._netBox.label.text =
             `↓${formatSpeedCompact(net.rxSpeed, useBits)} ↑${formatSpeedCompact(net.txSpeed, useBits)}`;
         // Network has no percentage scale, so keep the panel label neutral.
