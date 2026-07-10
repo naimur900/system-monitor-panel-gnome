@@ -44,7 +44,7 @@ pack: schemas
 	rm -f $(UUID).shell-extension.zip
 	gnome-extensions pack $(SRC) \
 		--extra-source=icons \
-		--extra-source=$(CURDIR)/LICENSE \
+		--extra-source="$(CURDIR)/LICENSE" \
 		--schema=schemas/org.gnome.shell.extensions.system-monitor-panel.gschema.xml \
 		--force
 

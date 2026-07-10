@@ -3,7 +3,7 @@
   "name": "System Monitor Panel",
   "description": "Show CPU, memory, disk, network and temperature readings in the top panel, with a dropdown dashboard for per-core CPU usage, a memory and swap breakdown, per-filesystem disk usage, live network speeds and hardware sensor readings.\n\nEach metric can be toggled independently in the panel and in the dropdown. The refresh interval, temperature unit (C/F), network unit (bytes/bits) and panel position are all configurable.",
   "shell-version": ["48", "49", "50"],
-  "version-name": "1.1",
+  "version-name": "1.3",
   "settings-schema": "org.gnome.shell.extensions.system-monitor-panel",
   "url": "https://github.com/naimur900/system-monitor-panel-gnome"
 }

@@ -270,7 +270,7 @@ function queryFilesystemUsage(mounts, cancellable, callback) {
 
                 // Only the last callback reports, so the UI sees one complete
                 // set. Cancelled queries report too (each entry stays null) so
-                // an awaiting caller always resumes; it checks destroyed state
+                // an awaiting caller always resumes; it checks the cancellable
                 // itself before touching any UI.
                 if (--remaining === 0)
                     callback(results.filter(r => r !== null));
@@ -410,8 +410,8 @@ class SystemMetrics {
 
         // /proc/mounts only changes when something is (un)mounted.
         this._mountMonitor = GioUnix.MountMonitor.get();
-        this._mountsChangedId = this._mountMonitor.connect(
-            'mounts-changed', () => this._invalidateMounts());
+        this._mountMonitor.connectObject(
+            'mounts-changed', () => this._invalidateMounts(), this);
     }
 
     _invalidateMounts() {
@@ -905,10 +905,7 @@ class SystemMetrics {
     }
 
     destroy() {
-        if (this._mountsChangedId) {
-            this._mountMonitor.disconnect(this._mountsChangedId);
-            this._mountsChangedId = null;
-        }
+        this._mountMonitor?.disconnectObject(this);
         this._mountMonitor = null;
     }
 }
@@ -1580,10 +1577,9 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._timerId = null;
         this._seedTimeoutId = null;
         this._queuedRefreshId = null;
-        this._destroyed = false;
 
         // Cancels in-flight filesystem queries at teardown so their callbacks
-        // never touch a destroyed indicator.
+        // never touch a torn-down indicator.
         this._cancellable = new Gio.Cancellable();
         this._diskQueryPending = false;
 
@@ -1620,23 +1616,22 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
         // ── Signals ──
         // Clicking the panel button opens the dropdown, which pulls fresh data.
-        this._menuStateChangedId = this.menu.connect(
+        this.menu.connectObject(
             'open-state-changed', (_menu, isOpen) => {
                 if (isOpen)
                     this._refreshAll();
-            });
+            }, this);
 
         // Only the interval change needs to restart the timer.
-        this._intervalChangedId = this._settings.connect(
-            'changed::refresh-interval', () => this._startTimer());
-
         // GSettings emits 'changed' once per key, so a prefs dialog writing
         // several keys would otherwise trigger several full refreshes in a
         // row. Coalesce them into one pass on the next idle.
-        this._settingsChangedId = this._settings.connect('changed', () => {
-            this._applySettings();
-            this._queueRefresh();
-        });
+        this._settings.connectObject(
+            'changed::refresh-interval', () => this._startTimer(),
+            'changed', () => {
+                this._applySettings();
+                this._queueRefresh();
+            }, this);
 
         // ── Initial settings + seed + timer ──
         this._applySettings();
@@ -1813,7 +1808,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
     async _refreshCpu() {
         const cpu = await this._metrics.getCpuUsage();
-        if (this._destroyed)
+        if (!this._cancellable || this._cancellable.is_cancelled())
             return;
 
         const overall = Math.round(cpu.overall);
@@ -1826,7 +1821,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
     async _refreshMemory() {
         const mem = await this._metrics.getMemoryUsage();
-        if (this._destroyed)
+        if (!this._cancellable || this._cancellable.is_cancelled())
             return;
 
         const percent = Math.round(mem.percent);
@@ -1850,7 +1845,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         try {
             const disks = await this._metrics.getDiskUsage(
                 includeExternal, this._cancellable);
-            if (this._destroyed)
+            if (!this._cancellable || this._cancellable.is_cancelled())
                 return;
 
             const overall = this._metrics.getOverallDiskUsage(disks);
@@ -1875,7 +1870,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         const isFahrenheit = this._settings.get_string('temperature-unit') === 'fahrenheit';
 
         const temps = await this._metrics.getTemperatures();
-        if (this._destroyed)
+        if (!this._cancellable || this._cancellable.is_cancelled())
             return;
 
         const overall = this._metrics.getOverallTemperature(temps);
@@ -1898,7 +1893,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         const useBits = this._settings.get_string('network-unit') === 'bits';
 
         const net = await this._metrics.getNetworkSpeed();
-        if (this._destroyed)
+        if (!this._cancellable || this._cancellable.is_cancelled())
             return;
 
         this._netBox.label.text =
@@ -1911,7 +1906,6 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     }
 
     destroy() {
-        this._destroyed = true;
         this._stopTimer();
 
         // Outstanding statfs callbacks would otherwise fire against a
@@ -1929,20 +1923,8 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             this._queuedRefreshId = null;
         }
 
-        if (this._menuStateChangedId) {
-            this.menu.disconnect(this._menuStateChangedId);
-            this._menuStateChangedId = null;
-        }
-
-        if (this._settingsChangedId) {
-            this._settings.disconnect(this._settingsChangedId);
-            this._settingsChangedId = null;
-        }
-
-        if (this._intervalChangedId) {
-            this._settings.disconnect(this._intervalChangedId);
-            this._intervalChangedId = null;
-        }
+        this.menu.disconnectObject(this);
+        this._settings.disconnectObject(this);
 
         this._metrics.destroy();
         this._metrics = null;
@@ -1985,8 +1967,8 @@ export default class SystemMonitorPanelExtension extends Extension {
         Main.panel.addToStatusArea(this.uuid, this._indicator);
         this._applyPosition();
 
-        this._positionChangedId = this._settings.connect(
-            'changed::panel-position', () => this._applyPosition());
+        this._settings.connectObject(
+            'changed::panel-position', () => this._applyPosition(), this);
     }
 
     _applyPosition() {
@@ -2014,10 +1996,7 @@ export default class SystemMonitorPanelExtension extends Extension {
     }
 
     disable() {
-        if (this._positionChangedId) {
-            this._settings.disconnect(this._positionChangedId);
-            this._positionChangedId = null;
-        }
+        this._settings?.disconnectObject(this);
         this._indicator?.destroy();
         this._indicator = null;
         this._settings = null;
