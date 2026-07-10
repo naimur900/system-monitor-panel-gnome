@@ -20,7 +20,7 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 
 ## Requirements
 
-- **GNOME Shell 50** (see `shell-version` in [metadata.json](metadata.json)).
+- **GNOME Shell 50** (see `shell-version` in [src/metadata.json](src/metadata.json)).
 - `glib-compile-schemas` (ships with GLib / `glib2-devel`), used to compile the settings schema.
 
 Temperature and disk readings come from `/sys/class/thermal`, `/sys/class/hwmon`, and `/proc/mounts`. Machines that expose no readable sensor show `N/A` rather than failing.
@@ -45,10 +45,10 @@ make enable
 
 ```bash
 # 1. Compile the GSettings schema
-glib-compile-schemas schemas/
+glib-compile-schemas src/schemas/
 
 # 2. Copy (or symlink) into the extensions directory
-cp -r . ~/.local/share/gnome-shell/extensions/system-monitor-panel@naimur
+cp -r src/. ~/.local/share/gnome-shell/extensions/system-monitor-panel@naimur
 
 # 3. Enable it
 gnome-extensions enable system-monitor-panel@naimur
@@ -68,7 +68,7 @@ make pack
 ```
 
 This writes `system-monitor-panel@naimur.shell-extension.zip`, ready to upload.
-Do not add a `version` field to [metadata.json](metadata.json) — the site assigns
+Do not add a `version` field to [src/metadata.json](src/metadata.json) — the site assigns
 version numbers itself.
 
 ## Applying changes / reloading
@@ -103,7 +103,7 @@ Settings apply immediately; no reload is needed.
 
 ## Implementation notes
 
-The extension runs inside the GNOME Shell compositor process, so everything it does on a timer is on the critical path for desktop responsiveness. A few consequences shape the code in [extension.js](extension.js):
+The extension runs inside the GNOME Shell compositor process, so everything it does on a timer is on the critical path for desktop responsiveness. A few consequences shape the code in [src/extension.js](src/extension.js):
 
 - **All file IO is asynchronous.** `statfs` blocks in uninterruptible sleep on a device that has stopped responding — a drive unplugged without unmounting, say — so a synchronous call would freeze the whole desktop. `query_filesystem_info_async` hands the syscall to a GIO worker thread instead, and the `/proc` and `/sys` readings go through `load_contents_async` the same way, keeping every read off the compositor thread.
 - **Static metadata is cached.** Sensor paths are discovered once; mount points and each device's removable flag are cached and invalidated by `GioUnix.MountMonitor`. Only the values themselves are re-read on each refresh.
@@ -129,12 +129,12 @@ gnome-extensions info system-monitor-panel@naimur
 
 | File | Purpose |
 |------|---------|
-| [extension.js](extension.js) | Main extension logic — panel indicators, dropdown, metric collection. |
-| [prefs.js](prefs.js) | libadwaita preferences window. |
-| [stylesheet.css](stylesheet.css) | Panel and dropdown styling. |
-| [metadata.json](metadata.json) | Extension metadata (UUID, name, shell version). |
-| [schemas/](schemas/) | GSettings schema for user preferences. |
-| [icons/](icons/) | Symbolic panel icons. |
+| [src/extension.js](src/extension.js) | Main extension logic — panel indicators, dropdown, metric collection. |
+| [src/prefs.js](src/prefs.js) | libadwaita preferences window. |
+| [src/stylesheet.css](src/stylesheet.css) | Panel and dropdown styling. |
+| [src/metadata.json](src/metadata.json) | Extension metadata (UUID, name, shell version). |
+| [src/schemas/](src/schemas/) | GSettings schema for user preferences. |
+| [src/icons/](src/icons/) | Symbolic panel icons. |
 | [Makefile](Makefile) | Development shortcuts: `install`, `pack`, `check`, `enable`, `logs`, … |
 
 ## License
