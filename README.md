@@ -20,7 +20,7 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 
 ## Requirements
 
-- **GNOME Shell 50** (see `shell-version` in [src/metadata.json](src/metadata.json)).
+- **GNOME Shell 48–50** (see `shell-version` in [src/metadata.json](src/metadata.json)).
 - `glib-compile-schemas` (ships with GLib / `glib2-devel`), used to compile the settings schema.
 
 Temperature and disk readings come from `/sys/class/thermal`, `/sys/class/hwmon`, and `/proc/mounts`. Machines that expose no readable sensor show `N/A` rather than failing.
