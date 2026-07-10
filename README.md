@@ -3,19 +3,20 @@
 A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, network speed, and device temperature** right in the top panel, with a rich dropdown dashboard for detailed stats.
 
 <p align="center">
-  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/" target="_blank">
+  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/">
     <img src="public/gnome-logo.png"
-         alt="Get it on GNOME Extensions"
+         alt="Install from GNOME Extensions"
          width="260">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/">
-    <strong>📦 Install from GNOME Extensions</strong>
-  </a>
-  <br>
-  <sub>Available for GNOME Shell 48, 49 &amp; 50</sub>
+  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/"><strong>Install from GNOME Extensions →</strong></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/GNOME-48--50-4A86CF?logo=gnome&logoColor=white" alt="GNOME Shell">
+  <img src="https://img.shields.io/badge/License-GPL--2.0-green.svg" alt="License">
 </p>
 
 <p align="center">
