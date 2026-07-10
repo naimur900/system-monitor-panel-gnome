@@ -3,6 +3,20 @@
 A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, network speed, and device temperature** right in the top panel, with a rich dropdown dashboard for detailed stats.
 
 <p align="center">
+  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/">
+    <img src="https://raw.githubusercontent.com/GNOME/extensions-web/master/extensions-web/static/images/egs-logo.svg"
+         alt="Get it on GNOME Extensions"
+         height="80">
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://extensions.gnome.org/extension/10372/system-monitor-panel/">
+    <strong>Install from GNOME Extensions</strong>
+  </a>
+</p>
+
+<p align="center">
   <img src="public/img-1.png" alt="The top panel showing CPU usage, memory usage and temperature indicators" width="700">
 </p>
 <p align="center"><em>The at-a-glance indicators in the top panel.</em></p>
@@ -15,7 +29,7 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
   - **Memory** — used/available/free/cached/buffers breakdown and swap usage.
   - **Disk** — combined usage plus a per-filesystem breakdown, with removable drives optionally included and badged `EXT`.
   - **Network** — live download/upload speeds and cumulative totals since boot.
-  - **Temperature** — readings from the significant hardware sensors (CPU, GPU, chipset, motherboard, drives, Wi‑Fi), one per component, with the CPU package sensor preferred for the headline value.
+  - **Temperature** — readings from the significant hardware sensors (CPU, GPU, chipset, motherboard, drives, Wi-Fi), one per component, with the CPU package sensor preferred for the headline value.
 - **Configurable refresh interval** (1–300 seconds).
 - **Celsius or Fahrenheit** temperature display.
 - **Bytes or bits** network speed display (MB/s or Mbps).
@@ -49,8 +63,9 @@ make enable
 make prefs     # open the preferences window
 ```
 
-Once published, the extension can also be installed from its page on
-[extensions.gnome.org](https://extensions.gnome.org).
+Or install directly from the official GNOME Extensions website:
+
+**https://extensions.gnome.org/extension/10372/system-monitor-panel/**
 
 ## Development
 
