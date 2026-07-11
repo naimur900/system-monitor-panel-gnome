@@ -1,5 +1,5 @@
 /* ============================================
-   System Monitor Panel — GNOME 50 Extension
+   System Monitor — GNOME 50 Extension
    ============================================ */
 
 /* --- Panel Status Indicator --- */
@@ -46,7 +46,6 @@
 
 .smp-dropdown-menu {
   min-width: 560px;
-  /* Roomier inset around the whole panel; smaller corner radius. */
   padding: 8px;
   border-radius: 10px;
 }
@@ -103,7 +102,6 @@
   font-size: 9px;
   font-weight: bold;
   color: #8a8a8a;
-  /* letter-spacing keeps the small caps readable */
   padding-top: 4px;
   padding-bottom: 1px;
 }

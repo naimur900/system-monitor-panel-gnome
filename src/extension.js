@@ -1,5 +1,5 @@
 /* ============================================
-   System Monitor Panel — extension.js
+   System Monitor — extension.js
    GNOME 50 Shell Extension
    ============================================
 
@@ -924,7 +924,6 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
         this.set_vertical(true);
         this._extension = extension;
 
-        // Header
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
 
@@ -950,13 +949,11 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
         });
         header.add_child(this.valueLabel);
 
-        // Overall progress bar
         this.progressBarBg = new St.BoxLayout({style_class: 'smp-bar-bg'});
         this.progressBarFill = new St.Widget({style_class: 'smp-bar-fill smp-color-cpu-bg'});
         this.progressBarBg.add_child(this.progressBarFill);
         this.add_child(this.progressBarBg);
 
-        // Per-core grid (always visible)
         const coresLabel = new St.Label({
             text: 'Per‑core usage',
             style_class: 'smp-section-subtitle',
@@ -1003,7 +1000,6 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
             }
         }
 
-        // Update per-core values.
         for (let i = 0; i < cpu.cores.length; i++) {
             const usage = cpu.cores[i];
             const w = this._coreWidgets[i];
@@ -1060,7 +1056,6 @@ class MemoryCardItem extends St.BoxLayout {
         });
         this.set_vertical(true);
 
-        // Header
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
 
@@ -1086,20 +1081,17 @@ class MemoryCardItem extends St.BoxLayout {
         });
         header.add_child(this.valueLabel);
 
-        // Main progress bar
         this.progressBarBg = new St.BoxLayout({style_class: 'smp-bar-bg smp-bar-bg-half'});
         this.progressBarFill = new St.Widget({style_class: 'smp-bar-fill smp-color-mem-bg'});
         this.progressBarBg.add_child(this.progressBarFill);
         this.add_child(this.progressBarBg);
 
-        // Detail grid
         this.usedLabel = addStatRow(this, 'Used / Total', '—');
         this.availLabel = addStatRow(this, 'Available', '—');
         this.freeLabel = addStatRow(this, 'Free', '—');
         this.cachedLabel = addStatRow(this, 'Cached', '—');
         this.buffersLabel = addStatRow(this, 'Buffers', '—');
 
-        // Swap section
         this.swapBox = new St.BoxLayout({vertical: true, style_class: 'smp-swap-box'});
         this.add_child(this.swapBox);
 
@@ -1151,7 +1143,6 @@ class DiskCardItem extends St.BoxLayout {
         });
         this.set_vertical(true);
 
-        // Header
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
 
@@ -1177,7 +1168,6 @@ class DiskCardItem extends St.BoxLayout {
         });
         header.add_child(this.valueLabel);
 
-        // Combined usage across every listed filesystem
         this.overallLabel = new St.Label({
             text: 'Total storage used',
             style_class: 'smp-section-subtitle',
@@ -1189,7 +1179,6 @@ class DiskCardItem extends St.BoxLayout {
         this.progressBarBg.add_child(this.progressBarFill);
         this.add_child(this.progressBarBg);
 
-        // Per-filesystem breakdown
         this.disksContainer = new St.BoxLayout({
             style_class: 'smp-disks-container',
             vertical: true,
@@ -1202,8 +1191,6 @@ class DiskCardItem extends St.BoxLayout {
         });
         this.disksContainer.add_child(this.emptyLabel);
 
-        // Rows are reused across refreshes; only a change in the number of
-        // mounts grows or shrinks the pool.
         this._diskRows = [];
     }
 
@@ -1296,7 +1283,6 @@ class TempCardItem extends St.BoxLayout {
         });
         this.set_vertical(true);
 
-        // Header
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
 
@@ -1322,7 +1308,6 @@ class TempCardItem extends St.BoxLayout {
         });
         header.add_child(this.valueLabel);
 
-        // Overall label + progress bar
         this.overallLabel = new St.Label({
             text: 'Overall system temperature',
             style_class: 'smp-section-subtitle',
@@ -1334,7 +1319,6 @@ class TempCardItem extends St.BoxLayout {
         this.progressBarBg.add_child(this.progressBarFill);
         this.add_child(this.progressBarBg);
 
-        // Sensor breakdown
         this.sensorsContainer = new St.BoxLayout({
             style_class: 'smp-sensors-container',
             vertical: true,
@@ -1347,7 +1331,6 @@ class TempCardItem extends St.BoxLayout {
         });
         this.sensorsContainer.add_child(this.emptyLabel);
 
-        // Rows are reused across refreshes; see DiskCardItem.
         this._sensorRows = [];
     }
 
@@ -1428,7 +1411,6 @@ class NetworkCardItem extends St.BoxLayout {
         });
         this.set_vertical(true);
 
-        // Header
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
 
@@ -1454,13 +1436,11 @@ class NetworkCardItem extends St.BoxLayout {
         });
         header.add_child(this.valueLabel);
 
-        // Current speed rows
         this.downLabel = addStatRow(this, '↓  Download', '0 B/s');
         this.upLabel = addStatRow(this, '↑  Upload', '0 B/s');
         this.downLabel.style_class = 'smp-net-speed-value';
         this.upLabel.style_class = 'smp-net-speed-value';
 
-        // Cumulative totals (since boot)
         this.rxTotalLabel = addStatRow(this, 'Total received', '—');
         this.txTotalLabel = addStatRow(this, 'Total sent', '—');
     }
@@ -1493,7 +1473,6 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
         refreshBtn.connect('clicked', () => indicator._refreshAll());
         box.add_child(refreshBtn);
 
-        // System Monitor button
         const monitorBtn = this._makeButton(
             'utilities-system-monitor-symbolic', 'System Monitor');
         monitorBtn.connect('clicked', () => {
@@ -1502,7 +1481,6 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
         });
         box.add_child(monitorBtn);
 
-        // Preferences button
         const prefsBtn = this._makeButton(
             'preferences-system-symbolic', 'Preferences');
         prefsBtn.connect('clicked', () => {
@@ -1510,7 +1488,7 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
             try {
                 extension.openPreferences();
             } catch (e) {
-                console.error('System Monitor Panel: openPreferences failed', e);
+                console.error('System Monitor: openPreferences failed', e);
             }
         });
         box.add_child(prefsBtn);
@@ -1552,14 +1530,14 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
             return;
         } catch (e) {
             // Recoverable: the spawn below is the real failure point.
-            console.debug(`System Monitor Panel: AppInfo launch failed: ${e}`);
+            console.debug(`System Monitor: AppInfo launch failed: ${e}`);
         }
         // …and fall back to a raw spawn if that fails.
         try {
             GLib.spawn_command_line_async('gnome-system-monitor');
         } catch (e) {
-            Main.notify('System Monitor Panel', 'Could not launch gnome-system-monitor.');
-            console.error('System Monitor Panel: spawn launch failed', e);
+            Main.notify('System Monitor', 'Could not launch gnome-system-monitor.');
+            console.error('System Monitor: spawn launch failed', e);
         }
     }
 });
@@ -1570,7 +1548,7 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
 const SystemMonitorIndicator = GObject.registerClass(
 class SystemMonitorIndicator extends PanelMenu.Button {
     _init(extension) {
-        super._init(0.5, 'System Monitor Panel');
+        super._init(0.5, 'System Monitor');
         this._extension = extension;
         this._settings = extension.getSettings();
         this._metrics = new SystemMetrics();
@@ -1801,7 +1779,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             if (!this._isVisible(box, card))
                 continue;
             refresh().catch(e => {
-                console.error(`System Monitor Panel: ${name} refresh failed`, e);
+                console.error(`System Monitor: ${name} refresh failed`, e);
             });
         }
     }
@@ -1981,7 +1959,7 @@ export default class SystemMonitorPanelExtension extends Extension {
         const targetBox = Main.panel[box];
         if (!targetBox) {
             console.error(
-                `System Monitor Panel: this GNOME Shell no longer exposes ` +
+                `System Monitor: this GNOME Shell no longer exposes ` +
                 `Main.panel.${box}; keeping the default panel position.`);
             return;
         }

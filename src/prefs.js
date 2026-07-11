@@ -1,5 +1,5 @@
 /* ============================================
-   System Monitor Panel — prefs.js
+   System Monitor — prefs.js
    GNOME 50 Preferences UI (libadwaita)
    ============================================
 
@@ -24,7 +24,7 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         // Adw.PreferencesPage has no padding property; margins inset its
         // content so the groups sit further from the window edges.
         const page = new Adw.PreferencesPage({
-            title: 'System Monitor Panel',
+            title: 'System Monitor',
             icon_name: 'utilities-system-monitor-symbolic',
             margin_top: 24,
             margin_bottom: 24,
@@ -40,7 +40,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         });
         page.add(generalGroup);
 
-        // Refresh interval
         const refreshRow = new Adw.SpinRow({
             title: 'Refresh Interval',
             subtitle: 'How often to update metrics automatically (1–300 seconds)',
@@ -60,7 +59,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         generalGroup.add(refreshRow);
 
-        // Temperature unit
         const tempUnitRow = new Adw.ActionRow({
             title: 'Temperature Unit',
             subtitle: 'Choose between Celsius and Fahrenheit',
@@ -71,7 +69,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
             valign: Gtk.Align.CENTER,
         });
 
-        // Set current value
         const currentUnit = settings.get_string('temperature-unit');
         tempUnitDropdown.set_selected(currentUnit === 'fahrenheit' ? 1 : 0);
 
@@ -84,7 +81,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         tempUnitRow.set_activatable_widget(tempUnitDropdown);
         generalGroup.add(tempUnitRow);
 
-        // Network unit
         const netUnitRow = new Adw.ActionRow({
             title: 'Network Speed Unit',
             subtitle: 'Choose between bytes per second and bits per second',
@@ -95,7 +91,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
             valign: Gtk.Align.CENTER,
         });
 
-        // Set current value
         const currentNetUnit = settings.get_string('network-unit');
         netUnitDropdown.set_selected(currentNetUnit === 'bits' ? 1 : 0);
 
@@ -142,7 +137,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         positionRow.set_activatable_widget(positionDropdown);
         visGroup.add(positionRow);
 
-        // Show CPU
         const cpuRow = new Adw.SwitchRow({
             title: 'Show CPU Usage',
             subtitle: 'Display CPU usage percentage in the panel',
@@ -155,7 +149,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         visGroup.add(cpuRow);
 
-        // Show Memory
         const memRow = new Adw.SwitchRow({
             title: 'Show Memory Usage',
             subtitle: 'Display memory usage percentage in the panel',
@@ -168,7 +161,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         visGroup.add(memRow);
 
-        // Show Disk
         const diskRow = new Adw.SwitchRow({
             title: 'Show Disk Usage',
             subtitle: 'Display total disk usage percentage in the panel',
@@ -181,7 +173,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         visGroup.add(diskRow);
 
-        // Show Temperature
         const tempRow = new Adw.SwitchRow({
             title: 'Show Temperature',
             subtitle: 'Display device temperature in the panel',
@@ -194,7 +185,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         visGroup.add(tempRow);
 
-        // Show Network
         const netRow = new Adw.SwitchRow({
             title: 'Show Network Speed',
             subtitle: 'Display network download/upload speed in the panel',
@@ -214,7 +204,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         });
         page.add(cardGroup);
 
-        // Show CPU Card
         const cpuCardRow = new Adw.SwitchRow({
             title: 'Show CPU Card',
             subtitle: 'Display the CPU usage card in the menu',
@@ -227,7 +216,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         cardGroup.add(cpuCardRow);
 
-        // Show Memory Card
         const memCardRow = new Adw.SwitchRow({
             title: 'Show Memory Card',
             subtitle: 'Display the memory usage card in the menu',
@@ -240,7 +228,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         cardGroup.add(memCardRow);
 
-        // Show Disk Card
         const diskCardRow = new Adw.SwitchRow({
             title: 'Show Disk Card',
             subtitle: 'Display the disk usage card in the menu',
@@ -272,7 +259,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         cardGroup.add(externalDisksRow);
 
-        // Show Temperature Card
         const tempCardRow = new Adw.SwitchRow({
             title: 'Show Temperature Card',
             subtitle: 'Display the temperature card in the menu',
@@ -285,7 +271,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         cardGroup.add(tempCardRow);
 
-        // Show Network Card
         const netCardRow = new Adw.SwitchRow({
             title: 'Show Network Card',
             subtitle: 'Display the network speed card in the menu',
@@ -305,7 +290,6 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         });
         page.add(displayGroup);
 
-        // Show Icons
         const iconsRow = new Adw.SwitchRow({
             title: 'Show Icons',
             subtitle: 'Display icons next to metric values',

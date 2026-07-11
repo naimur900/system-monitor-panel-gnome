@@ -1,4 +1,4 @@
-# System Monitor Panel
+# System Monitor
 
 A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, network speed, and device temperature** right in the top panel, with a rich dropdown dashboard for detailed stats.
 
