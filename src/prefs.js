@@ -42,9 +42,9 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
 
         const refreshRow = new Adw.SpinRow({
             title: 'Refresh Interval',
-            subtitle: 'How often to update metrics automatically (1–300 seconds)',
+            subtitle: 'How often to update metrics automatically (5–300 seconds)',
             adjustment: new Gtk.Adjustment({
-                lower: 1,
+                lower: 5,
                 upper: 300,
                 step_increment: 1,
                 page_increment: 10,
@@ -149,6 +149,18 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
         );
         visGroup.add(cpuRow);
 
+        const gpuRow = new Adw.SwitchRow({
+            title: 'Show GPU Usage',
+            subtitle: 'Display GPU usage percentage in the panel (hidden when no GPU is detected)',
+        });
+        settings.bind(
+            'show-gpu',
+            gpuRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        visGroup.add(gpuRow);
+
         const memRow = new Adw.SwitchRow({
             title: 'Show Memory Usage',
             subtitle: 'Display memory usage percentage in the panel',
@@ -215,6 +227,18 @@ export default class SystemMonitorPanelPreferences extends ExtensionPreferences 
             Gio.SettingsBindFlags.DEFAULT
         );
         cardGroup.add(cpuCardRow);
+
+        const gpuCardRow = new Adw.SwitchRow({
+            title: 'Show GPU Card',
+            subtitle: 'Display the GPU usage card in the menu',
+        });
+        settings.bind(
+            'show-gpu-card',
+            gpuCardRow,
+            'active',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        cardGroup.add(gpuCardRow);
 
         const memCardRow = new Adw.SwitchRow({
             title: 'Show Memory Card',

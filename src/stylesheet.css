@@ -114,6 +114,13 @@
   background-color: #3584e4;
 }
 
+.smp-color-gpu {
+  color: #4dd0e1;
+} /* Cyan */
+.smp-color-gpu-bg {
+  background-color: #4dd0e1;
+}
+
 .smp-color-mem {
   color: #c061cb;
 } /* Purple */
@@ -200,6 +207,42 @@
   color: #eeeeee;
   width: 30px;
   text-align: right;
+}
+
+/* --- GPU List --- */
+
+.smp-gpus-container {
+  padding-top: 2px;
+  spacing: 8px;
+}
+
+.smp-gpu-entry {
+  spacing: 4px;
+}
+
+.smp-gpu-row {
+  spacing: 5px;
+}
+
+.smp-gpu-name {
+  font-size: 10.5px;
+  color: #eeeeee;
+}
+
+/* Marks a GPU as integrated (iGPU) or dedicated (dGPU) */
+.smp-gpu-badge {
+  font-size: 8px;
+  font-weight: bold;
+  color: #4dd0e1;
+  background-color: rgba(77, 208, 225, 0.15);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.smp-gpu-percent {
+  font-size: 10.5px;
+  font-weight: bold;
+  color: #eeeeee;
 }
 
 /* --- Memory Detail Rows --- */

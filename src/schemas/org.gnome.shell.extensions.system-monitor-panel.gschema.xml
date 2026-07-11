@@ -5,9 +5,9 @@
 
     <key name="refresh-interval" type="i">
       <default>30</default>
-      <range min="1" max="300"/>
+      <range min="5" max="300"/>
       <summary>Refresh interval</summary>
-      <description>How often to refresh system metrics, in seconds (1–300).</description>
+      <description>How often to refresh system metrics, in seconds (5–300).</description>
     </key>
 
     <key name="temperature-unit" type="s">
@@ -38,6 +38,15 @@
       <description>Whether to show CPU usage percentage in the panel.</description>
     </key>
 
+    <key name="show-gpu" type="b">
+      <default>false</default>
+      <summary>Show GPU usage</summary>
+      <description>
+        Whether to show GPU usage percentage in the panel. The entry hides
+        itself on machines where no GPU is detected.
+      </description>
+    </key>
+
     <key name="show-memory" type="b">
       <default>true</default>
       <summary>Show memory usage</summary>
@@ -66,6 +75,12 @@
       <default>true</default>
       <summary>Show CPU card</summary>
       <description>Whether to show the CPU card in the dropdown menu.</description>
+    </key>
+
+    <key name="show-gpu-card" type="b">
+      <default>false</default>
+      <summary>Show GPU card</summary>
+      <description>Whether to show the GPU card in the dropdown menu.</description>
     </key>
 
     <key name="show-memory-card" type="b">

@@ -7,14 +7,14 @@
    SPDX-License-Identifier: GPL-2.0-or-later
 */
 
-import GObject from 'gi://GObject';
+import Clutter from 'gi://Clutter';
 import GLib from 'gi://GLib';
+import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GioUnix from 'gi://GioUnix';
-import Clutter from 'gi://Clutter';
 import St from 'gi://St';
 
-import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
+import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
@@ -24,6 +24,8 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 // Makes load_contents_async() awaitable; it resolves to [contents, etag].
 Gio._promisify(Gio.File.prototype, 'load_contents_async');
+// Makes communicate_utf8_async() awaitable; it resolves to [stdout, stderr].
+Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
 
 const DECODER = new TextDecoder('utf-8');
 
@@ -40,6 +42,36 @@ async function readFile(path) {
     } catch (_e) {
         return null;
     }
+}
+
+/**
+ * List the entry names of a /sys/class directory.
+ *
+ * Listing a /sys/class directory touches only dentries, never a device, so it
+ * stays synchronous; keeping the enumerator's lifetime inside one call also
+ * avoids holding its directory fd across awaits.
+ */
+function listSysDir(dirPath) {
+    const names = [];
+    let enumerator = null;
+    try {
+        enumerator = Gio.File.new_for_path(dirPath).enumerate_children(
+            'standard::name',
+            Gio.FileQueryInfoFlags.NONE,
+            null
+        );
+
+        let info;
+        while ((info = enumerator.next_file(null)) !== null)
+            names.push(info.get_name());
+    } catch (_e) {
+        // Tree not present on this system, or it vanished mid-scan.
+    } finally {
+        // next_file() can throw; without this the directory fd is held
+        // until the enumerator is garbage collected.
+        enumerator?.close(null);
+    }
+    return names;
 }
 
 /**
@@ -304,9 +336,6 @@ function thresholdClass(percent) {
     return 'normal';
 }
 
-/**
- * Temperature threshold class (°C) for coloring.
- */
 function tempThresholdClass(tempC) {
     if (tempC >= 85)
         return 'critical';
@@ -315,16 +344,10 @@ function tempThresholdClass(tempC) {
     return 'normal';
 }
 
-/**
- * Convert °C to °F.
- */
 function celsiusToFahrenheit(c) {
     return c * 9 / 5 + 32;
 }
 
-/**
- * Friendly names for common thermal-zone / hwmon sensor identifiers.
- */
 const TEMP_FRIENDLY_NAMES = {
     'x86_pkg_temp': 'CPU Package',
     'Package id 0': 'CPU Package',
@@ -390,6 +413,74 @@ function tempSensorCategory(raw) {
 }
 
 
+/* ── GPU helpers ──────────────────────────────── */
+
+/**
+ * PCI vendor ids for the GPU vendors worth naming.
+ */
+const GPU_VENDOR_NAMES = {
+    '8086': 'Intel',
+    '1002': 'AMD',
+    '10de': 'NVIDIA',
+};
+
+/**
+ * Distro-dependent locations of the PCI id database.
+ */
+const PCI_IDS_PATHS = ['/usr/share/hwdata/pci.ids', '/usr/share/misc/pci.ids'];
+
+/**
+ * Look up a device's marketing name in the pci.ids database. Returns null when
+ * the database is missing or the device is unknown. Only called once per GPU
+ * at discovery; the database is ~1.5 MB, so it is never kept around.
+ *
+ * Format: vendor lines start at column 0 ("8086  Intel Corporation"), device
+ * lines belong to the vendor block above them and are indented by one tab
+ * ("\t9b41  CometLake-U GT2 [UHD Graphics]"). Subdevice lines use two tabs and
+ * can never match a "\t<id>  " prefix.
+ */
+async function lookupPciDeviceName(vendorId, deviceId) {
+    if (!vendorId || !deviceId)
+        return null;
+
+    for (const path of PCI_IDS_PATHS) {
+        const data = await readFile(path);
+        if (data === null)
+            continue;
+
+        let inVendor = false;
+        for (const line of data.split('\n')) {
+            if (line.length === 0 || line.startsWith('#'))
+                continue;
+            if (!line.startsWith('\t')) {
+                if (inVendor)
+                    break; // left our vendor's block
+                inVendor = line.startsWith(`${vendorId}  `);
+            } else if (inVendor && line.startsWith(`\t${deviceId}  `)) {
+                return line.slice(deviceId.length + 3).trim();
+            }
+        }
+        return null; // a readable database is authoritative — stop here
+    }
+    return null;
+}
+
+/**
+ * Compact display name for a GPU. pci.ids names are usually
+ * "Chip codename [Marketing name]"; the bracketed part is what users
+ * recognise, prefixed with the vendor when it is not already there.
+ */
+function friendlyGpuName(pciName, vendor) {
+    if (!pciName)
+        return vendor ? `${vendor} GPU` : 'GPU';
+    const bracket = pciName.match(/\[([^\]]+)\]/);
+    const name = bracket ? bracket[1] : pciName;
+    if (vendor && !name.toLowerCase().startsWith(vendor.toLowerCase()))
+        return `${vendor} ${name}`;
+    return name;
+}
+
+
 /* ── System Metrics Collector ─────────────────── */
 
 class SystemMetrics {
@@ -407,6 +498,11 @@ class SystemMetrics {
         this._tempSensors = null;
         this._mounts = null;
         this._externalCache = new Map();
+        this._gpus = null;
+
+        // Previous idle-residency sample per GPU, for drivers (i915/xe) that
+        // expose cumulative sleep time instead of a busy percentage.
+        this._prevGpuIdle = new Map();
 
         // /proc/mounts only changes when something is (un)mounted.
         this._mountMonitor = GioUnix.MountMonitor.get();
@@ -732,35 +828,9 @@ class SystemMetrics {
             return n === 1 ? friendly : `${friendly} ${n}`;
         };
 
-        // Listing a /sys/class directory touches only dentries, never a
-        // device, so it stays synchronous; keeping the enumerator's lifetime
-        // inside one call also avoids holding its directory fd across awaits.
-        const listChildren = dirPath => {
-            const names = [];
-            let enumerator = null;
-            try {
-                enumerator = Gio.File.new_for_path(dirPath).enumerate_children(
-                    'standard::name',
-                    Gio.FileQueryInfoFlags.NONE,
-                    null
-                );
-
-                let info;
-                while ((info = enumerator.next_file(null)) !== null)
-                    names.push(info.get_name());
-            } catch (_e) {
-                // Tree not present on this system, or it vanished mid-scan.
-            } finally {
-                // next_file() can throw; without this the directory fd is held
-                // until the enumerator is garbage collected.
-                enumerator?.close(null);
-            }
-            return names;
-        };
-
         const fallbackZones = [];
 
-        for (const name of listChildren('/sys/class/thermal')) {
+        for (const name of listSysDir('/sys/class/thermal')) {
             if (!name.startsWith('thermal_zone'))
                 continue;
 
@@ -786,7 +856,7 @@ class SystemMetrics {
             });
         }
 
-        for (const hwmonName of listChildren('/sys/class/hwmon')) {
+        for (const hwmonName of listSysDir('/sys/class/hwmon')) {
             const basePath = `/sys/class/hwmon/${hwmonName}`;
             const nameStr = await readFile(`${basePath}/name`);
             const chipName = nameStr ? nameStr.trim() : hwmonName;
@@ -904,6 +974,343 @@ class SystemMetrics {
         return {tempC: valid[0].tempC, name: friendlyTempName(valid[0].name)};
     }
 
+    /**
+     * First readable path among `candidates`, or null. Drivers move these
+     * files around between kernel versions, so each metric probes a list.
+     */
+    async _firstReadable(candidates) {
+        for (const path of candidates) {
+            if ((await readFile(path)) !== null)
+                return path;
+        }
+        return null;
+    }
+
+    /**
+     * Locate every GPU under /sys/class/drm and work out, per device, which
+     * files (if any) report usage, VRAM, temperature and clock frequency.
+     * Returns [{ card, name, integrated, driver, busyPath, idlePath,
+     * vramUsedPath, vramTotalPath, tempPath, freqPath, freqDivisor,
+     * freqMaxMhz, useNvidiaSmi }].
+     *
+     * Vendor interfaces differ:
+     *  - amdgpu/radeon publish gpu_busy_percent and mem_info_vram_* directly,
+     *    plus temperature and clock under a device hwmon chip.
+     *  - i915/xe publish no busy file; usage is derived from the growth rate
+     *    of the cumulative RC6 (sleep) residency counter. Clocks live in
+     *    per-card (i915) or per-tile (xe) frequency files.
+     *  - The proprietary NVIDIA driver publishes nothing in sysfs; metrics
+     *    come from one `nvidia-smi` query per refresh when the tool exists.
+     *  - nouveau exposes only a hwmon temperature.
+     */
+    async _discoverGpus() {
+        const gpus = [];
+        const nvidiaSmi = GLib.find_program_in_path('nvidia-smi') !== null;
+
+        for (const cardName of listSysDir('/sys/class/drm')) {
+            // Render nodes (renderD128) and connectors (card1-eDP-1) also live
+            // here; only the card nodes represent devices.
+            if (!/^card\d+$/.test(cardName))
+                continue;
+
+            const base = `/sys/class/drm/${cardName}`;
+            const uevent = await readFile(`${base}/device/uevent`);
+            if (uevent === null)
+                continue; // virtual device (vgem/vkms) with no hardware behind it
+
+            const fields = {};
+            for (const line of uevent.split('\n')) {
+                const eq = line.indexOf('=');
+                if (eq !== -1)
+                    fields[line.slice(0, eq)] = line.slice(eq + 1);
+            }
+
+            const driver = fields['DRIVER'];
+            if (!driver)
+                continue; // device present but not bound to any driver
+
+            const [vendorId, deviceId] = (fields['PCI_ID'] ?? '')
+                .toLowerCase().split(':');
+            const vendor = GPU_VENDOR_NAMES[vendorId] ?? null;
+
+            // Integrated vs. dedicated is a heuristic: PCI has no "integrated"
+            // flag. Bus 0 is the processor's root bus, where Intel iGPUs
+            // always sit. A missing PCI slot means a platform device (ARM
+            // SoC), which is integrated by definition. AMD APUs can enumerate
+            // on a non-zero bus, so amdgpu gets a second chance below.
+            const slot = fields['PCI_SLOT_NAME'];
+            let integrated = !slot || parseInt(slot.split(':')[1], 16) === 0;
+
+            const gpu = {
+                card: cardName,
+                driver,
+                vendor,
+                integrated,
+                name: friendlyGpuName(
+                    await lookupPciDeviceName(vendorId, deviceId), vendor),
+                busyPath: null,       // reads a 0–100 percentage directly
+                idlePath: null,       // reads cumulative idle milliseconds
+                vramUsedPath: null,   // bytes
+                vramTotalPath: null,  // bytes
+                tempPath: null,       // millidegrees Celsius
+                freqPath: null,       // current clock
+                freqDivisor: 1,       // divides freqPath's value into MHz
+                freqMaxMhz: null,     // static ceiling, read once
+                useNvidiaSmi: false,
+            };
+
+            if (driver === 'amdgpu' || driver === 'radeon') {
+                gpu.busyPath = await this._firstReadable(
+                    [`${base}/device/gpu_busy_percent`]);
+                if ((await readFile(`${base}/device/mem_info_vram_total`)) !== null) {
+                    gpu.vramUsedPath = `${base}/device/mem_info_vram_used`;
+                    gpu.vramTotalPath = `${base}/device/mem_info_vram_total`;
+                }
+
+                // The APU-only thermal-cap file identifies integrated parts
+                // that enumerate on a non-zero bus (recent Ryzen laptops).
+                if (!gpu.integrated &&
+                    (await readFile(`${base}/device/apu_thermal_cap`)) !== null)
+                    gpu.integrated = true;
+
+                // sclk levels are static; the highest one is the max clock.
+                const sclk = await readFile(`${base}/device/pp_dpm_sclk`);
+                if (sclk) {
+                    const levels = [...sclk.matchAll(/(\d+)\s*mhz/gi)]
+                        .map(m => parseInt(m[1], 10));
+                    if (levels.length > 0)
+                        gpu.freqMaxMhz = Math.max(...levels);
+                }
+            } else if (driver === 'i915' || driver === 'xe') {
+                gpu.idlePath = await this._firstReadable([
+                    `${base}/power/rc6_residency_ms`,
+                    `${base}/gt/gt0/rc6_residency_ms`,
+                    `${base}/device/tile0/gt0/gtidle/idle_residency_ms`,
+                ]);
+                gpu.freqPath = await this._firstReadable([
+                    `${base}/gt_act_freq_mhz`,
+                    `${base}/gt/gt0/rps_act_freq_mhz`,
+                    `${base}/device/tile0/gt0/freq0/act_freq`,
+                ]);
+
+                const maxPath = await this._firstReadable([
+                    `${base}/gt_max_freq_mhz`,
+                    `${base}/gt/gt0/rps_max_freq_mhz`,
+                    `${base}/device/tile0/gt0/freq0/max_freq`,
+                ]);
+                if (maxPath) {
+                    const maxStr = await readFile(maxPath);
+                    const max = parseInt(maxStr, 10);
+                    if (!isNaN(max) && max > 0)
+                        gpu.freqMaxMhz = max;
+                }
+            } else if (driver === 'nvidia') {
+                gpu.useNvidiaSmi = nvidiaSmi;
+            }
+
+            // Any vendor may expose a hwmon chip with temperature (Intel Arc,
+            // AMD, nouveau) and clock (amdgpu's freq1_input, in Hz). Intel
+            // iGPUs expose none — their die shares the CPU package sensor.
+            for (const hwmonName of listSysDir(`${base}/device/hwmon`)) {
+                const hwmonBase = `${base}/device/hwmon/${hwmonName}`;
+                gpu.tempPath ??= await this._firstReadable(
+                    [`${hwmonBase}/temp1_input`]);
+                if (!gpu.freqPath &&
+                    (await readFile(`${hwmonBase}/freq1_input`)) !== null) {
+                    gpu.freqPath = `${hwmonBase}/freq1_input`;
+                    gpu.freqDivisor = 1e6; // Hz → MHz
+                }
+            }
+
+            gpus.push(gpu);
+        }
+
+        // Panel and card lead with the GPU doing the rendering work, so
+        // dedicated cards come first.
+        gpus.sort((a, b) => {
+            if (a.integrated !== b.integrated)
+                return a.integrated ? 1 : -1;
+            return a.card.localeCompare(b.card);
+        });
+
+        return gpus;
+    }
+
+    /**
+     * Read every discovered GPU's metrics. Discovery runs once and is cached;
+     * each refresh only reads the handful of per-GPU metric files (plus one
+     * nvidia-smi call when the proprietary driver is present).
+     *
+     * Returns [{ name, integrated, busy, vramUsed, vramTotal, vramPercent,
+     * tempC, freqMhz, freqMaxMhz }] with null for anything the hardware or
+     * driver does not report. busy is also null on the first sample of an
+     * idle-residency GPU — a delta needs two reads.
+     */
+    async getGpuUsage(cancellable = null) {
+        this._gpus ??= this._discoverGpus();
+        const gpus = await this._gpus;
+
+        const now = GLib.get_monotonic_time();
+        let stale = false;
+
+        const results = await Promise.all(gpus.map(async gpu => {
+            const result = {
+                name: gpu.name,
+                integrated: gpu.integrated,
+                busy: null,
+                vramUsed: null,
+                vramTotal: null,
+                vramPercent: null,
+                tempC: null,
+                freqMhz: null,
+                freqMaxMhz: gpu.freqMaxMhz,
+            };
+
+            // Non-existent paths resolve to null through Promise.all
+            // unchanged, so every GPU costs one parallel fan-out.
+            const [busyStr, idleStr, usedStr, totalStr, tempStr, freqStr] =
+                await Promise.all([
+                    gpu.busyPath ? readFile(gpu.busyPath) : null,
+                    gpu.idlePath ? readFile(gpu.idlePath) : null,
+                    gpu.vramUsedPath ? readFile(gpu.vramUsedPath) : null,
+                    gpu.vramTotalPath ? readFile(gpu.vramTotalPath) : null,
+                    gpu.tempPath ? readFile(gpu.tempPath) : null,
+                    gpu.freqPath ? readFile(gpu.freqPath) : null,
+                ]);
+
+            // A metric file that existed at discovery but fails now means the
+            // device went away (eGPU unplug, module unload) — rediscover.
+            if ((gpu.busyPath && busyStr === null) ||
+                (gpu.idlePath && idleStr === null))
+                stale = true;
+
+            if (busyStr !== null) {
+                const busy = parseInt(busyStr, 10);
+                if (!isNaN(busy))
+                    result.busy = Math.max(0, Math.min(100, busy));
+            }
+
+            if (idleStr !== null) {
+                // Usage ≈ the share of wall-clock time the GPU spent out of
+                // its sleep state. Slightly over-counts (idle-but-awake time
+                // is "busy"), but it is the only usage signal i915/xe expose
+                // without CAP_PERFMON.
+                const idleMs = parseFloat(idleStr);
+                const prev = this._prevGpuIdle.get(gpu.card);
+                if (!isNaN(idleMs)) {
+                    this._prevGpuIdle.set(gpu.card, {idleMs, timeUs: now});
+                    if (prev && now > prev.timeUs) {
+                        const wallMs = (now - prev.timeUs) / 1000;
+                        const dIdle = Math.max(0, idleMs - prev.idleMs);
+                        result.busy = Math.max(0, Math.min(100,
+                            100 * (1 - dIdle / wallMs)));
+                    }
+                }
+            }
+
+            if (usedStr !== null && totalStr !== null) {
+                const used = parseInt(usedStr, 10);
+                const total = parseInt(totalStr, 10);
+                if (!isNaN(used) && !isNaN(total) && total > 0) {
+                    result.vramUsed = used;
+                    result.vramTotal = total;
+                    result.vramPercent = (used / total) * 100;
+                }
+            }
+
+            if (tempStr !== null) {
+                const milli = parseInt(tempStr, 10);
+                if (!isNaN(milli))
+                    result.tempC = milli / 1000;
+            }
+
+            if (freqStr !== null) {
+                const freq = parseInt(freqStr, 10);
+                if (!isNaN(freq))
+                    result.freqMhz = freq / gpu.freqDivisor;
+            }
+
+            return result;
+        }));
+
+        if (stale) {
+            this._gpus = null;
+            this._prevGpuIdle.clear();
+        }
+
+        if (gpus.some(gpu => gpu.useNvidiaSmi))
+            await this._fillNvidiaMetrics(gpus, results, cancellable);
+
+        return results;
+    }
+
+    /**
+     * Fill the result slots of NVIDIA GPUs from a single nvidia-smi query.
+     * nvidia-smi reports cards in a stable minor order, matching the card
+     * order within the discovery list. Fields it cannot report come back as
+     * "[N/A]", which the numeric parses below turn into null.
+     */
+    async _fillNvidiaMetrics(gpus, results, cancellable) {
+        let stdout;
+        try {
+            const proc = Gio.Subprocess.new(
+                ['nvidia-smi',
+                    '--query-gpu=name,utilization.gpu,memory.used,' +
+                        'memory.total,temperature.gpu,clocks.gr',
+                    '--format=csv,noheader,nounits'],
+                Gio.SubprocessFlags.STDOUT_PIPE |
+                    Gio.SubprocessFlags.STDERR_SILENCE);
+            [stdout] = await proc.communicate_utf8_async(null, cancellable);
+        } catch (_e) {
+            // Cancelled at teardown, or the tool broke — leave the nulls.
+            return;
+        }
+
+        const lines = stdout.split('\n').filter(l => l.trim().length > 0);
+        let line = 0;
+
+        gpus.forEach((gpu, i) => {
+            if (!gpu.useNvidiaSmi || line >= lines.length)
+                return;
+
+            const parts = lines[line++].split(',').map(s => s.trim());
+            if (parts.length < 6)
+                return;
+
+            const result = results[i];
+            const [name, busy, usedMiB, totalMiB, temp, freq] = parts;
+
+            if (name)
+                result.name = name;
+            if (!isNaN(parseFloat(busy)))
+                result.busy = Math.max(0, Math.min(100, parseFloat(busy)));
+            const used = parseFloat(usedMiB) * 1048576;
+            const total = parseFloat(totalMiB) * 1048576;
+            if (!isNaN(used) && !isNaN(total) && total > 0) {
+                result.vramUsed = used;
+                result.vramTotal = total;
+                result.vramPercent = (used / total) * 100;
+            }
+            if (!isNaN(parseFloat(temp)))
+                result.tempC = parseFloat(temp);
+            if (!isNaN(parseFloat(freq)))
+                result.freqMhz = parseFloat(freq);
+        });
+    }
+
+    /**
+     * The GPU the panel's single slot should report: the dedicated card doing
+     * the work if its usage is known, else any GPU with a usage reading, else
+     * the first one. Null only when the machine has no GPU at all.
+     */
+    getPrimaryGpu(gpus) {
+        if (gpus.length === 0)
+            return null;
+        return gpus.find(g => !g.integrated && g.busy !== null) ??
+            gpus.find(g => g.busy !== null) ??
+            gpus[0];
+    }
+
     destroy() {
         this._mountMonitor?.disconnectObject(this);
         this._mountMonitor = null;
@@ -985,9 +1392,6 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
                 row.add_child(w1.box);
                 this._coreWidgets.push(w1);
 
-                // Spacer between the columns: pushes the left column to the
-                // start and the right column to the end (justified to the
-                // edges) with the gap in the middle.
                 row.add_child(new St.Widget({x_expand: true}));
 
                 if (i + 1 < cpu.cores.length) {
@@ -1040,6 +1444,147 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
         box.add_child(val);
 
         return {box, barFill, val};
+    }
+});
+
+const GpuCardItem = GObject.registerClass(
+class GpuCardItem extends PopupMenu.PopupBaseMenuItem {
+    _init(extension) {
+        super._init({
+            reactive: false,
+            can_focus: false,
+            style_class: 'smp-card',
+        });
+        this.set_vertical(true);
+
+        const header = new St.BoxLayout({style_class: 'smp-card-header'});
+        this.add_child(header);
+
+        const icon = new St.Icon({
+            gicon: Gio.icon_new_for_string(`${extension.path}/icons/smp-gpu-symbolic.svg`),
+            style_class: 'smp-card-icon smp-color-gpu',
+        });
+        header.add_child(icon);
+
+        const title = new St.Label({
+            text: 'GPU Usage',
+            style_class: 'smp-card-title',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(title);
+
+        header.add_child(new St.Widget({x_expand: true}));
+
+        this.valueLabel = new St.Label({
+            text: '—',
+            style_class: 'smp-card-value smp-color-gpu',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        header.add_child(this.valueLabel);
+
+        this.gpusContainer = new St.BoxLayout({
+            style_class: 'smp-gpus-container',
+            vertical: true,
+        });
+        this.add_child(this.gpusContainer);
+
+        this.emptyLabel = new St.Label({
+            text: 'No GPU information available',
+            style_class: 'smp-no-sensors',
+        });
+        this.gpusContainer.add_child(this.emptyLabel);
+
+        this._gpuRows = [];
+    }
+
+    update(gpus, primary, isFahrenheit) {
+        this.valueLabel.text = primary && primary.busy !== null
+            ? `${primary.busy.toFixed(1)}%` : 'N/A';
+
+        this.emptyLabel.visible = gpus.length === 0;
+
+        resizeRowPool(this._gpuRows, gpus.length,
+            () => this._createGpuEntry());
+
+        const suffix = isFahrenheit ? '°F' : '°C';
+        const conv = t => (isFahrenheit ? celsiusToFahrenheit(t) : t);
+
+        gpus.forEach((gpu, i) => {
+            const row = this._gpuRows[i];
+
+            row.name.text = gpu.name;
+            row.badge.text = gpu.integrated ? 'iGPU' : 'dGPU';
+            row.percent.text = gpu.busy !== null
+                ? `${gpu.busy.toFixed(0)}%` : 'N/A';
+            setBarWidth(row.barFill, gpu.busy ?? 0, 500);
+
+            // Detail rows only appear when the driver reports the metric, so
+            // an iGPU is not a column of dashes.
+            const hasVram = gpu.vramTotal !== null;
+            row.vram.get_parent().visible = hasVram;
+            if (hasVram) {
+                row.vram.text =
+                    `${formatBytes(gpu.vramUsed / 1024)} / ${formatBytes(gpu.vramTotal / 1024)}` +
+                    `  ·  ${Math.round(gpu.vramPercent)}%`;
+            }
+
+            const hasFreq = gpu.freqMhz !== null;
+            row.freq.get_parent().visible = hasFreq;
+            if (hasFreq) {
+                row.freq.text = gpu.freqMaxMhz
+                    ? `${Math.round(gpu.freqMhz)} / ${Math.round(gpu.freqMaxMhz)} MHz`
+                    : `${Math.round(gpu.freqMhz)} MHz`;
+            }
+
+            const hasTemp = gpu.tempC !== null;
+            row.temp.get_parent().visible = hasTemp;
+            if (hasTemp)
+                row.temp.text = `${conv(gpu.tempC).toFixed(1)}${suffix}`;
+        });
+    }
+
+    _createGpuEntry() {
+        const entry = new St.BoxLayout({
+            style_class: 'smp-gpu-entry',
+            vertical: true,
+        });
+
+        const row = new St.BoxLayout({style_class: 'smp-gpu-row'});
+
+        const name = new St.Label({
+            style_class: 'smp-gpu-name',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        row.add_child(name);
+
+        const badge = new St.Label({
+            style_class: 'smp-gpu-badge',
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        row.add_child(badge);
+
+        row.add_child(new St.Widget({x_expand: true}));
+
+        const percent = new St.Label({
+            style_class: 'smp-gpu-percent',
+            y_align: Clutter.ActorAlign.CENTER,
+            x_align: Clutter.ActorAlign.END,
+        });
+        row.add_child(percent);
+
+        entry.add_child(row);
+
+        const barBg = new St.BoxLayout({style_class: 'smp-bar-bg'});
+        const barFill = new St.Widget({style_class: 'smp-bar-fill smp-color-gpu-bg'});
+        barBg.add_child(barFill);
+        entry.add_child(barBg);
+
+        const vram = addStatRow(entry, 'VRAM', '—');
+        const freq = addStatRow(entry, 'Frequency', '—');
+        const temp = addStatRow(entry, 'Temperature', '—');
+
+        this.gpusContainer.add_child(entry);
+        return {root: entry, name, badge, percent, barFill, vram, freq, temp};
     }
 });
 
@@ -1561,6 +2106,10 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._cancellable = new Gio.Cancellable();
         this._diskQueryPending = false;
 
+        // Set once a refresh learns the machine exposes no GPU at all; keeps
+        // the panel from pinning a permanent "N/A" slot on such machines.
+        this._gpuUnavailable = false;
+
         // ── Build panel layout ──
         this._panelBox = new St.BoxLayout({
             style_class: 'smp-panel-box panel-status-indicators-box',
@@ -1572,6 +2121,10 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._cpuBox = this._createMetricBox(
             Gio.icon_new_for_string(`${extension.path}/icons/smp-cpu-symbolic.svg`), '—');
         this._panelBox.add_child(this._cpuBox.container);
+
+        this._gpuBox = this._createMetricBox(
+            Gio.icon_new_for_string(`${extension.path}/icons/smp-gpu-symbolic.svg`), '—');
+        this._panelBox.add_child(this._gpuBox.container);
 
         this._memBox = this._createMetricBox(
             Gio.icon_new_for_string(`${extension.path}/icons/smp-memory-symbolic.svg`), '—');
@@ -1615,11 +2168,16 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._applySettings();
         this._startTimer();
 
-        // Seed the CPU and network deltas, then do the first real refresh
-        // shortly after — a delta needs two samples. Results are discarded;
-        // the timed refresh reports any real failure.
+        // Seed the CPU, GPU and network deltas, then do the first real
+        // refresh shortly after — a delta needs two samples. Results are
+        // discarded; the timed refresh reports any real failure.
         this._metrics.getCpuUsage().catch(() => {});
         this._metrics.getNetworkSpeed().catch(() => {});
+        // GPU display is off by default; don't touch its sysfs tree (or spawn
+        // nvidia-smi) unless something will actually show the numbers.
+        if (this._settings.get_boolean('show-gpu') ||
+            this._settings.get_boolean('show-gpu-card'))
+            this._metrics.getGpuUsage(this._cancellable).catch(() => {});
         this._seedTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 700, () => {
             this._seedTimeoutId = null;
             this._refreshAll();
@@ -1655,7 +2213,9 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._cpuCard = new CpuCardItem(this._extension);
         this.menu.addMenuItem(this._cpuCard);
 
-        // Memory and Disk share a single horizontal row.
+        this._gpuCard = new GpuCardItem(this._extension);
+        this.menu.addMenuItem(this._gpuCard);
+
         this._memCard = new MemoryCardItem(this._extension);
         this._diskCard = new DiskCardItem(this._extension);
 
@@ -1668,7 +2228,6 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._memDiskRow.add_child(this._diskCard);
         this.menu.addMenuItem(this._memDiskRow);
 
-        // Temperature and Network share a single horizontal row.
         this._tempCard = new TempCardItem(this._extension);
         this._netCard = new NetworkCardItem(this._extension);
 
@@ -1688,12 +2247,14 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     _applySettings() {
         // Panel (top bar) toggles.
         const showCpu = this._settings.get_boolean('show-cpu');
+        const showGpu = this._settings.get_boolean('show-gpu');
         const showMem = this._settings.get_boolean('show-memory');
         const showDisk = this._settings.get_boolean('show-disk');
         const showTemp = this._settings.get_boolean('show-temperature');
         const showNet = this._settings.get_boolean('show-network');
         // Dropdown menu card toggles.
         const showCpuCard = this._settings.get_boolean('show-cpu-card');
+        const showGpuCard = this._settings.get_boolean('show-gpu-card');
         const showMemCard = this._settings.get_boolean('show-memory-card');
         const showDiskCard = this._settings.get_boolean('show-disk-card');
         const showTempCard = this._settings.get_boolean('show-temperature-card');
@@ -1701,15 +2262,17 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         const showIcons = this._settings.get_boolean('show-icons');
 
         this._cpuBox.container.visible = showCpu;
+        this._gpuBox.container.visible = showGpu && !this._gpuUnavailable;
         this._memBox.container.visible = showMem;
         this._diskBox.container.visible = showDisk;
         this._tempBox.container.visible = showTemp;
         this._netBox.container.visible = showNet;
 
-        for (const box of [this._cpuBox, this._memBox, this._diskBox, this._tempBox, this._netBox])
+        for (const box of [this._cpuBox, this._gpuBox, this._memBox, this._diskBox, this._tempBox, this._netBox])
             box.icon.visible = showIcons;
 
         this._cpuCard.visible = showCpuCard;
+        this._gpuCard.visible = showGpuCard;
         this._memCard.visible = showMemCard;
         this._diskCard.visible = showDiskCard;
         this._tempCard.visible = showTempCard;
@@ -1722,7 +2285,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     _startTimer() {
         // Guard against leaking an existing source if called twice.
         this._stopTimer();
-        const interval = Math.max(1, this._settings.get_int('refresh-interval'));
+        const interval = Math.max(5, this._settings.get_int('refresh-interval'));
         this._timerId = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT,
             interval,
@@ -1751,11 +2314,6 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         });
     }
 
-    /**
-     * A metric is worth collecting only if something will display it: its panel
-     * label, or its card while the dropdown is actually open. Collecting for a
-     * closed menu reads /proc and /sys for pixels that are never drawn.
-     */
     _isVisible(box, card) {
         return box.container.visible || (card.visible && this.menu.isOpen);
     }
@@ -1769,6 +2327,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     _refreshAll() {
         const metrics = [
             ['CPU', this._cpuBox, this._cpuCard, () => this._refreshCpu()],
+            ['GPU', this._gpuBox, this._gpuCard, () => this._refreshGpu()],
             ['memory', this._memBox, this._memCard, () => this._refreshMemory()],
             ['disk', this._diskBox, this._diskCard, () => this._refreshDisk()],
             ['temperature', this._tempBox, this._tempCard, () => this._refreshTemperature()],
@@ -1795,6 +2354,37 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
         if (this._shouldUpdateCard(this._cpuCard))
             this._cpuCard.update(cpu);
+    }
+
+    async _refreshGpu() {
+        const isFahrenheit = this._settings.get_string('temperature-unit') === 'fahrenheit';
+
+        const gpus = await this._metrics.getGpuUsage(this._cancellable);
+        if (!this._cancellable || this._cancellable.is_cancelled())
+            return;
+
+        // No GPU on this machine: give the panel slot back rather than pin a
+        // permanent "N/A" there. The card stays and says so explicitly.
+        const unavailable = gpus.length === 0;
+        if (unavailable !== this._gpuUnavailable) {
+            this._gpuUnavailable = unavailable;
+            this._gpuBox.container.visible =
+                this._settings.get_boolean('show-gpu') && !unavailable;
+        }
+
+        const primary = this._metrics.getPrimaryGpu(gpus);
+
+        if (primary && primary.busy !== null) {
+            const busy = Math.round(primary.busy);
+            this._gpuBox.label.text = `${busy}%`;
+            setStateClass(this._gpuBox.label, 'smp-label', thresholdClass(busy));
+        } else {
+            this._gpuBox.label.text = 'N/A';
+            setStateClass(this._gpuBox.label, 'smp-label', thresholdClass(0));
+        }
+
+        if (this._shouldUpdateCard(this._gpuCard))
+            this._gpuCard.update(gpus, primary, isFahrenheit);
     }
 
     async _refreshMemory() {
@@ -1940,8 +2530,6 @@ export default class SystemMonitorPanelExtension extends Extension {
         this._settings = this.getSettings();
         this._indicator = new SystemMonitorIndicator(this);
 
-        // Register the indicator (claims the role), then move its container to
-        // the configured box/index.
         Main.panel.addToStatusArea(this.uuid, this._indicator);
         this._applyPosition();
 
@@ -1964,9 +2552,6 @@ export default class SystemMonitorPanelExtension extends Extension {
             return;
         }
 
-        // Move rather than re-calling addToStatusArea, which would throw on
-        // the already-claimed role. Detach first so the append index below
-        // reflects the box without our own container in it.
         const container = this._indicator.container;
         container.get_parent()?.remove_child(container);
         targetBox.insert_child_at_index(
