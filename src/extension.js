@@ -2525,7 +2525,7 @@ const PANEL_POSITIONS = {
     'far-right': {box: '_rightBox', index: null},
 };
 
-export default class SystemMonitorPanelExtension extends Extension {
+export default class SystemMonitorExtension extends Extension {
     enable() {
         this._settings = this.getSettings();
         this._indicator = new SystemMonitorIndicator(this);

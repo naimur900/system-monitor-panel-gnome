@@ -75,7 +75,7 @@ pack: schemas
 
 # Live extension logs. Ctrl-C to stop.
 logs:
-	journalctl -f -o cat /usr/bin/gnome-shell | grep -i --line-buffered "system-monitor-panel\|SystemMonitorPanel"
+	journalctl -f -o cat /usr/bin/gnome-shell | grep -i --line-buffered "system-monitor-panel\|SystemMonitor"
 
 clean:
 	rm -f $(SRC)/schemas/gschemas.compiled $(ZIP)

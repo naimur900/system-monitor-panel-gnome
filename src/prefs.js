@@ -14,7 +14,7 @@ import Gtk from 'gi://Gtk';
 import { ExtensionPreferences } from 'resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js';
 
 
-export default class SystemMonitorPanelPreferences extends ExtensionPreferences {
+export default class SystemMonitorPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
 
