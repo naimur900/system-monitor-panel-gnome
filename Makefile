@@ -79,3 +79,9 @@ logs:
 
 clean:
 	rm -f $(SRC)/schemas/gschemas.compiled $(ZIP)
+
+
+
+# make shexli          # pack a fresh zip + run shexli against it
+# make check shexli    # your literal phrasing: syntax-check, then shexli
+# make clean-shexli    # delete the analyzer env to force a rebuild
