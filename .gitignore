@@ -6,3 +6,7 @@ src/schemas/gschemas.compiled
 
 # Local tooling state
 .claude/
+
+
+# Analyzer virtualenv, built on demand by `make shexli`.
+.shexli-venv/
