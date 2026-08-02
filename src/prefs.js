@@ -42,9 +42,9 @@ export default class SystemMonitorPreferences extends ExtensionPreferences {
 
         const refreshRow = new Adw.SpinRow({
             title: 'Refresh Interval',
-            subtitle: 'How often to update metrics automatically (5–300 seconds)',
+            subtitle: 'How often to update metrics automatically (1–300 seconds)',
             adjustment: new Gtk.Adjustment({
-                lower: 5,
+                lower: 1,
                 upper: 300,
                 step_increment: 1,
                 page_increment: 10,
