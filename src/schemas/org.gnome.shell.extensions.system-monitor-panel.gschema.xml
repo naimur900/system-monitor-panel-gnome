@@ -7,7 +7,7 @@
       <default>30</default>
       <range min="5" max="300"/>
       <summary>Refresh interval</summary>
-      <description>How often to refresh system metrics, in seconds (5–300).</description>
+      <description>How often to refresh system metrics, in seconds (1–300).</description>
     </key>
 
     <key name="temperature-unit" type="s">
