@@ -103,6 +103,26 @@ export default class SystemMonitorPreferences extends ExtensionPreferences {
         netUnitRow.set_activatable_widget(netUnitDropdown);
         generalGroup.add(netUnitRow);
 
+        const launchCommandRow = new Adw.ActionRow({
+            title: 'System Monitor App',
+            subtitle: 'Desktop entry ID or command line to open when the button is pressed. Leave empty for the desktop default.',
+        });
+
+        const launchCommandEntry = new Gtk.Entry({
+            text: settings.get_string('system-monitor-command') || '',
+            valign: Gtk.Align.CENTER,
+            hexpand: true,
+            placeholder_text: 'org.gnome.SystemMonitor.desktop',
+        });
+
+        launchCommandEntry.connect('changed', () => {
+            settings.set_string('system-monitor-command', launchCommandEntry.get_text().trim());
+        });
+
+        launchCommandRow.add_suffix(launchCommandEntry);
+        launchCommandRow.set_activatable_widget(launchCommandEntry);
+        generalGroup.add(launchCommandRow);
+
         // ── Top Panel Visibility Group ──
         const visGroup = new Adw.PreferencesGroup({
             title: 'Top Panel',

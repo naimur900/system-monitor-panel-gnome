@@ -2009,6 +2009,7 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
             can_focus: false,
             style_class: 'smp-footer',
         });
+        this._extension = extension;
 
         const box = new St.BoxLayout({style_class: 'smp-footer-box', x_expand: true});
         this.add_child(box);
@@ -2067,22 +2068,34 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
     }
 
     _launchSystemMonitor() {
-        // Launch through a proper app-launch context first…
-        try {
-            const appInfo = Gio.AppInfo.create_from_commandline(
-                'gnome-system-monitor', 'System Monitor', Gio.AppInfoCreateFlags.NONE);
+        const settings = this._extension.getSettings();
+        const spec = settings.get_string('system-monitor-command').trim();
+
+        const launchApp = (appInfo) => {
             appInfo.launch([], global.create_app_launch_context(0, -1));
+        };
+
+        // If no custom override is set, use the desktop's default
+        // System Monitor launcher rather than a hard-coded executable name.
+        const preferredDesktopId = 'org.gnome.SystemMonitor.desktop';
+        const appId = spec || preferredDesktopId;
+
+        try {
+            const appInfo = Gio.DesktopAppInfo.new(appId) ||
+                Gio.AppInfo.create_from_commandline(appId, 'System Monitor', Gio.AppInfoCreateFlags.NONE);
+            launchApp(appInfo);
             return;
         } catch (e) {
-            // Recoverable: the spawn below is the real failure point.
-            console.debug(`System Monitor: AppInfo launch failed: ${e}`);
+            console.debug(`System Monitor: desktop/default launch failed for "${appId}": ${e}`);
         }
-        // …and fall back to a raw spawn if that fails.
+
+        // Last-resort compatibility path for systems where the desktop entry
+        // is absent but the legacy binary name still exists.
         try {
-            GLib.spawn_command_line_async('gnome-system-monitor');
+            GLib.spawn_command_line_async(spec || 'gnome-system-monitor');
         } catch (e) {
-            Main.notify('System Monitor', 'Could not launch gnome-system-monitor.');
-            console.error('System Monitor: spawn launch failed', e);
+            Main.notify('System Monitor', `Could not launch ${spec || 'default System Monitor app'}.`);
+            console.error(`System Monitor: spawn launch failed for "${spec || 'default System Monitor app'}"`, e);
         }
     }
 });
