@@ -127,6 +127,16 @@
       <description>Whether to show the network card in the dropdown menu.</description>
     </key>
 
+    <key name="system-monitor-command" type="s">
+      <default>''</default>
+      <summary>System monitor command</summary>
+      <description>
+        Desktop entry ID or command line used when the menu's System Monitor
+        button is pressed. Leave it empty to use the desktop's default
+        System Monitor app.
+      </description>
+    </key>
+
     <key name="show-icons" type="b">
       <default>true</default>
       <summary>Show icons</summary>

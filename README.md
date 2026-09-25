@@ -40,6 +40,7 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 - **Bytes or bits** network speed display (MB/s or Mbps).
 - **Configurable panel position** — either end of the left or right panel box.
 - **Toggle any metric** on or off, both in the panel and in the dropdown, plus an option to hide icons.
+- **Configurable System Monitor app** from the footer button, using either a desktop default or a user-selected app ID/command.
 - **Manual refresh** button in the dropdown footer.
 
 <p align="center">
@@ -112,6 +113,7 @@ assigns version numbers itself.
 | `show-gpu` / `show-gpu-card`                                   | off       | GPU indicator and card (hidden when no GPU reports usage) |
 | `show-*-card`                                                  | on        | Dropdown card for each metric                 |
 | `show-external-disks`                                          | off       | Include removable/USB drives in the disk card |
+| `system-monitor-command`                                       | empty     | Override the footer button's app launch target; leave empty to use the desktop default System Monitor app |
 | `show-icons`                                                   | on        | Icons in the panel                            |
 
 Settings apply immediately; no reload is needed.
