@@ -1036,8 +1036,9 @@ class SystemMetrics {
             // Integrated vs. dedicated is a heuristic: PCI has no "integrated"
             // flag. Bus 0 is the processor's root bus, where Intel iGPUs
             // always sit. A missing PCI slot means a platform device (ARM
-            // SoC), which is integrated by definition. AMD APUs can enumerate
-            // on a non-zero bus, so amdgpu gets a second chance below.
+            // SoC), which is integrated by definition. Zen-era AMD APUs sit on
+            // a non-zero bus behind an internal bridge, so AMD gets a second
+            // chance below.
             const slot = fields['PCI_SLOT_NAME'];
             let integrated = !slot || parseInt(slot.split(':')[1], 16) === 0;
 
@@ -1067,11 +1068,22 @@ class SystemMetrics {
                     gpu.vramTotalPath = `${base}/device/mem_info_vram_total`;
                 }
 
-                // The APU-only thermal-cap file identifies integrated parts
-                // that enumerate on a non-zero bus (recent Ryzen laptops).
-                if (!gpu.integrated &&
-                    (await readFile(`${base}/device/apu_thermal_cap`)) !== null)
-                    gpu.integrated = true;
+                // amdgpu labels the northbridge voltage rail "vddnb" only on
+                // APUs (kernel 4.20+), which makes it the one APU signal that
+                // works across Ryzen generations. Missing board_info (6.7+
+                // only) and mem_info_vram_vendor (also absent on older dGPUs)
+                // are ambiguous; apu_thermal_cap exists only on the Steam
+                // Deck. Without hwmon (dpm off) the card stays dedicated.
+                if (!gpu.integrated) {
+                    for (const hwmonName of listSysDir(`${base}/device/hwmon`)) {
+                        const label = await readFile(
+                            `${base}/device/hwmon/${hwmonName}/in1_label`);
+                        if (label?.trim() === 'vddnb') {
+                            gpu.integrated = true;
+                            break;
+                        }
+                    }
+                }
 
                 // sclk levels are static; the highest one is the max clock.
                 const sclk = await readFile(`${base}/device/pp_dpm_sclk`);
