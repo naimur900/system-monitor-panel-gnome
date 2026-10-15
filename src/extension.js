@@ -1424,7 +1424,7 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
             can_focus: false,
             style_class: 'smp-card',
         });
-        this.set_vertical(true);
+        this.orientation = Clutter.Orientation.VERTICAL;
         this._extension = extension;
 
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
@@ -1465,7 +1465,7 @@ class CpuCardItem extends PopupMenu.PopupBaseMenuItem {
 
         this.coresContainer = new St.BoxLayout({
             style_class: 'smp-cores-container',
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
         });
         this.add_child(this.coresContainer);
         this._coreWidgets = [];
@@ -1551,7 +1551,7 @@ class GpuCardItem extends PopupMenu.PopupBaseMenuItem {
             can_focus: false,
             style_class: 'smp-card',
         });
-        this.set_vertical(true);
+        this.orientation = Clutter.Orientation.VERTICAL;
 
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
@@ -1580,7 +1580,7 @@ class GpuCardItem extends PopupMenu.PopupBaseMenuItem {
 
         this.gpusContainer = new St.BoxLayout({
             style_class: 'smp-gpus-container',
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
         });
         this.add_child(this.gpusContainer);
 
@@ -1650,7 +1650,7 @@ class GpuCardItem extends PopupMenu.PopupBaseMenuItem {
     _createGpuEntry() {
         const entry = new St.BoxLayout({
             style_class: 'smp-gpu-entry',
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
         });
 
         const row = new St.BoxLayout({style_class: 'smp-gpu-row'});
@@ -1711,7 +1711,7 @@ class MemoryCardItem extends St.BoxLayout {
             y_expand: true,
             y_align: Clutter.ActorAlign.FILL,
         });
-        this.set_vertical(true);
+        this.orientation = Clutter.Orientation.VERTICAL;
 
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
@@ -1749,7 +1749,7 @@ class MemoryCardItem extends St.BoxLayout {
         this.cachedLabel = addStatRow(this, 'Cached', '—');
         this.buffersLabel = addStatRow(this, 'Buffers', '—');
 
-        this.swapBox = new St.BoxLayout({vertical: true, style_class: 'smp-swap-box'});
+        this.swapBox = new St.BoxLayout({orientation: Clutter.Orientation.VERTICAL, style_class: 'smp-swap-box'});
         this.add_child(this.swapBox);
 
         const swapHeader = new St.BoxLayout({style_class: 'smp-swap-header'});
@@ -1798,7 +1798,7 @@ class DiskCardItem extends St.BoxLayout {
             y_expand: true,
             y_align: Clutter.ActorAlign.FILL,
         });
-        this.set_vertical(true);
+        this.orientation = Clutter.Orientation.VERTICAL;
 
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
@@ -1838,7 +1838,7 @@ class DiskCardItem extends St.BoxLayout {
 
         this.disksContainer = new St.BoxLayout({
             style_class: 'smp-disks-container',
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
         });
         this.add_child(this.disksContainer);
 
@@ -1885,7 +1885,7 @@ class DiskCardItem extends St.BoxLayout {
     _createDiskRow() {
         const entry = new St.BoxLayout({
             style_class: 'smp-disk-entry',
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
         });
 
         const row = new St.BoxLayout({style_class: 'smp-disk-row'});
@@ -1938,7 +1938,7 @@ class TempCardItem extends St.BoxLayout {
             y_expand: true,
             y_align: Clutter.ActorAlign.FILL,
         });
-        this.set_vertical(true);
+        this.orientation = Clutter.Orientation.VERTICAL;
 
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
@@ -1978,7 +1978,7 @@ class TempCardItem extends St.BoxLayout {
 
         this.sensorsContainer = new St.BoxLayout({
             style_class: 'smp-sensors-container',
-            vertical: true,
+            orientation: Clutter.Orientation.VERTICAL,
         });
         this.add_child(this.sensorsContainer);
 
@@ -2066,7 +2066,7 @@ class NetworkCardItem extends St.BoxLayout {
             y_expand: true,
             y_align: Clutter.ActorAlign.FILL,
         });
-        this.set_vertical(true);
+        this.orientation = Clutter.Orientation.VERTICAL;
 
         const header = new St.BoxLayout({style_class: 'smp-card-header'});
         this.add_child(header);
