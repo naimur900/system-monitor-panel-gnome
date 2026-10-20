@@ -24,9 +24,20 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 </p>
 <p align="center"><em>The at-a-glance indicators in the top panel.</em></p>
 
+## What's new in 3
+
+- **Steady panel width**: each reading holds room for three digits, so the
+  indicators no longer shift along the bar as a value gains or loses one.
+- **The shell's own look**: the dropdown takes GNOME Shell's popup background,
+  card and button colors, and its text color, instead of a palette of its own.
+- **Light and dark styles**: the dropdown and the panel readings follow the
+  shell's light style as well as its dark one, with accent colors tuned to stay
+  readable in both.
+
 ## Features
 
-- **At-a-glance panel indicators** for CPU, GPU, memory, disk, network, and temperature, with color-coded values (normal / warning / critical), in whatever left-to-right order you arrange them.
+- **At-a-glance panel indicators** for CPU, GPU, memory, disk, network, and temperature, with color-coded values (normal / warning / critical), in whatever left-to-right order you arrange them. Each holds a steady width, so the panel does not shift as values change.
+- **Matches GNOME Shell** — the dropdown uses the shell's own popup, card and button colors, and follows its light and dark styles.
 - **Detailed dropdown dashboard** with cards for each metric:
   - **CPU** — overall usage plus a per-core usage grid.
   - **GPU** — one entry per card, badged `iGPU`/`dGPU`, with usage, VRAM, clock and temperature wherever the driver reports them.
@@ -56,12 +67,12 @@ Temperature and disk readings come from `/sys/class/thermal`, `/sys/class/hwmon`
 
 GPU metrics come from whatever the loaded driver publishes, which differs by vendor:
 
-| Driver               | Usage                | VRAM | Clock | Temperature |
-| -------------------- | -------------------- | ---- | ----- | ----------- |
-| `amdgpu` / `radeon`  | yes                  | yes  | yes   | yes         |
-| `i915` / `xe`        | yes (idle residency) | —    | yes   | discrete cards only |
-| `nvidia` proprietary | yes, via `nvidia-smi`| yes  | yes   | yes         |
-| `nouveau`            | —                    | —    | —     | yes         |
+| Driver               | Usage                 | VRAM | Clock | Temperature         |
+| -------------------- | --------------------- | ---- | ----- | ------------------- |
+| `amdgpu` / `radeon`  | yes                   | yes  | yes   | yes                 |
+| `i915` / `xe`        | yes (idle residency)  | —    | yes   | discrete cards only |
+| `nvidia` proprietary | yes, via `nvidia-smi` | yes  | yes   | yes                 |
+| `nouveau`            | —                     | —    | —     | yes                 |
 
 Utilization is the one metric with no shared kernel interface. `nouveau` publishes none at all, and the proprietary NVIDIA driver only answers through `nvidia-smi`, so the GPU card names the driver standing in the way instead of showing a bare `N/A`. Intel integrated graphics have no temperature sensor of their own — their die shares the CPU package sensor.
 
@@ -101,29 +112,31 @@ assigns version numbers itself.
 
 ## Settings
 
-| Setting                                                        | Default   | Description                                   |
-| -------------------------------------------------------------- | --------- | --------------------------------------------- |
-| `refresh-interval`                                             | `30`      | Seconds between updates (2–300)               |
-| `temperature-unit`                                             | `celsius` | `celsius` or `fahrenheit`                     |
-| `network-unit`                                                 | `bytes`   | `bytes` (MB/s) or `bits` (Mbps)               |
-| `panel-position`                                               | `right`   | `far-left`, `left`, `right`, or `far-right`   |
-| `panel-order`                                                  | `cpu`, `gpu`, `memory`, `disk`, `temperature`, `network` | Left-to-right order of the panel indicators |
-| `show-cpu` / `-memory` / `-disk` / `-temperature` / `-network` | on        | Panel indicator for each metric               |
-| `show-gpu` / `show-gpu-card`                                   | off       | GPU indicator and card (hidden when no GPU reports usage) |
-| `show-*-card`                                                  | on        | Dropdown card for each metric                 |
-| `show-external-disks`                                          | off       | Include removable/USB drives in the disk card |
-| `show-icons`                                                   | on        | Icons in the panel                            |
+| Setting                                                        | Default                                                  | Description                                               |
+| -------------------------------------------------------------- | -------------------------------------------------------- | --------------------------------------------------------- |
+| `refresh-interval`                                             | `30`                                                     | Seconds between updates (2–300)                           |
+| `temperature-unit`                                             | `celsius`                                                | `celsius` or `fahrenheit`                                 |
+| `network-unit`                                                 | `bytes`                                                  | `bytes` (MB/s) or `bits` (Mbps)                           |
+| `panel-position`                                               | `right`                                                  | `far-left`, `left`, `right`, or `far-right`               |
+| `panel-order`                                                  | `cpu`, `gpu`, `memory`, `disk`, `temperature`, `network` | Left-to-right order of the panel indicators               |
+| `show-cpu` / `-memory` / `-disk` / `-temperature` / `-network` | on                                                       | Panel indicator for each metric                           |
+| `show-gpu` / `show-gpu-card`                                   | off                                                      | GPU indicator and card (hidden when no GPU reports usage) |
+| `show-*-card`                                                  | on                                                       | Dropdown card for each metric                             |
+| `show-external-disks`                                          | off                                                      | Include removable/USB drives in the disk card             |
+| `show-icons`                                                   | on                                                       | Icons in the panel                                        |
 
 Settings apply immediately; no reload is needed.
 
 ## Layout
 
-| File                                 | Purpose                                                 |
-| ------------------------------------ | ------------------------------------------------------- |
-| [src/extension.js](src/extension.js) | Panel indicators, dropdown dashboard, metric collection |
-| [src/prefs.js](src/prefs.js)         | Preferences window                                      |
+| File                                       | Purpose                                                 |
+| ------------------------------------------ | ------------------------------------------------------- |
+| [src/extension.js](src/extension.js)       | Panel indicators, dropdown dashboard, metric collection |
+| [src/prefs.js](src/prefs.js)               | Preferences window                                      |
 | [src/panelMetrics.js](src/panelMetrics.js) | Panel metric ids and order, shared by both of the above |
-| [src/icons/](src/icons/)             | Symbolic panel icons                                    |
+| [src/stylesheet.css](src/stylesheet.css)   | Panel and dropdown styles, dark and light               |
+| [src/updateNotice.js](src/updateNotice.js) | What's-new notification after an update                 |
+| [src/icons/](src/icons/)                   | Symbolic panel icons                                    |
 
 ## License
 

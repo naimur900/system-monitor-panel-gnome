@@ -1,6 +1,21 @@
 /* ============================================
    System Monitor — GNOME 50 Extension
-   ============================================ */
+   ============================================
+
+   Layout and the dark palette, then a light section at the end. The
+   extension puts `smp-light` on the indicator and its menu while the shell
+   uses its light style, and the light rules are scoped under it.
+
+   This is one file on purpose. The shell would load a stylesheet-dark.css or
+   stylesheet-light.css instead, but St only ranks an extension's rules above
+   the shell theme in the file it loads, not in a file that one @imports, so
+   the variants couldn't share this layout without copying all of it.
+
+   Surfaces follow the shell theme's, a step darker in the dark style: the
+   menu and cards sit just below the shell's popup and notification card
+   grays. The footer uses the shell's stock button, and primary text inherits
+   the menu's foreground. Only the surfaces, dimmer text tiers, bar tracks
+   and accents are spelled out per variant. */
 
 /* --- Panel Status Indicator --- */
 
@@ -23,17 +38,18 @@
   margin: 0;
 }
 
+/* Tabular figures give every digit the same advance, so a reading never
+   outgrows the slot reserved for it by its width template in extension.js. */
 .smp-metric-label {
   font-size: 11px;
   font-weight: bold;
   margin-top: 1px;
+  font-feature-settings: "tnum";
 }
 
-/* Color-coded panel labels based on status */
-.smp-label-normal {
-  color: #e0e0e0;
-}
-
+/* Color-coded panel labels based on status. A normal reading has no rule of
+   its own: it inherits the top bar's text color, which flips with the shell
+   style and turns light over the wallpaper in the overview. */
 .smp-label-warning {
   color: #f8e45c; /* Yellow */
 }
@@ -44,10 +60,13 @@
 
 /* --- Dropdown Menu Container --- */
 
+/* A step darker than the shell's #36363a popup; the border stays the
+   shell's own. */
 .smp-dropdown-menu {
   min-width: 560px;
   padding: 8px;
   border-radius: 10px;
+  background-color: #2b2b2f;
 }
 
 /* Row that holds two cards side by side (Temperature + Network).
@@ -61,8 +80,10 @@
 /* --- Dashboard Card Styling --- */
 
 .smp-card {
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  /* A step darker than the shell's #47474c notification card (.message),
+     keeping the same lift over the menu. */
+  background-color: #3a3a3f;
+  border: 1px solid transparent;
   border-radius: 5px;
   /* Symmetric margin drives a uniform 8px gap between every card
      (4px + 4px), independent of the container's outer padding. */
@@ -89,7 +110,6 @@
 .smp-card-title {
   font-size: 11.5px;
   font-weight: bold;
-  color: #eeeeee;
 }
 
 .smp-card-value {
@@ -101,17 +121,18 @@
 .smp-section-subtitle {
   font-size: 9px;
   font-weight: bold;
-  color: #8a8a8a;
+  color: rgba(255, 255, 255, 0.6);
   padding-top: 4px;
   padding-bottom: 1px;
 }
 
-/* Accent Colors for Sections */
+/* Accent Colors for Sections. Blue and purple sit a tone lighter than the
+   GNOME palette's mid tones so they hold contrast on the card gray. */
 .smp-color-cpu {
-  color: #3584e4;
+  color: #78aeed;
 } /* Blue */
 .smp-color-cpu-bg {
-  background-color: #3584e4;
+  background-color: #78aeed;
 }
 
 .smp-color-gpu {
@@ -122,10 +143,10 @@
 }
 
 .smp-color-mem {
-  color: #c061cb;
+  color: #dc8add;
 } /* Purple */
 .smp-color-mem-bg {
-  background-color: #c061cb;
+  background-color: #dc8add;
 }
 
 .smp-color-disk {
@@ -152,7 +173,7 @@
 /* --- Progress Bars --- */
 
 .smp-bar-bg {
-  background-color: rgba(255, 255, 255, 0.07);
+  background-color: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   height: 7px;
   width: 500px;
@@ -185,12 +206,12 @@
 
 .smp-core-label {
   font-size: 10px;
-  color: #9a9a9a;
+  color: rgba(255, 255, 255, 0.7);
   width: 42px;
 }
 
 .smp-mini-bar-bg {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
   height: 5px;
   width: 150px;
@@ -204,7 +225,6 @@
 .smp-core-value {
   font-size: 10px;
   font-weight: bold;
-  color: #eeeeee;
   width: 30px;
   text-align: right;
 }
@@ -226,7 +246,6 @@
 
 .smp-gpu-name {
   font-size: 10.5px;
-  color: #eeeeee;
 }
 
 /* Marks a GPU as integrated (iGPU) or dedicated (dGPU) */
@@ -242,13 +261,12 @@
 .smp-gpu-percent {
   font-size: 10.5px;
   font-weight: bold;
-  color: #eeeeee;
 }
 
 /* Stands in for the usage bar when the driver reports no utilisation */
 .smp-gpu-note {
   font-size: 9.5px;
-  color: #888888;
+  color: rgba(255, 255, 255, 0.6);
   max-width: 500px;
   padding: 1px 0;
 }
@@ -261,13 +279,12 @@
 
 .smp-detail-title {
   font-size: 10.5px;
-  color: #9a9a9a;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .smp-detail-value {
   font-size: 10.5px;
   font-weight: bold;
-  color: #eeeeee;
 }
 
 /* Network current-speed values (slightly larger, accented) */
@@ -281,7 +298,7 @@
 .smp-swap-box {
   margin-top: 4px;
   padding-top: 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
   spacing: 4px;
 }
 
@@ -291,17 +308,16 @@
 
 .smp-swap-title {
   font-size: 10px;
-  color: #9a9a9a;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .smp-swap-value {
   font-size: 10px;
   font-weight: bold;
-  color: #eeeeee;
 }
 
 .smp-swap-bar-bg {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
   height: 5px;
   width: 500px;
@@ -335,7 +351,6 @@
 
 .smp-disk-name {
   font-size: 10.5px;
-  color: #eeeeee;
 }
 
 /* Marks a removable/USB drive in the filesystem list */
@@ -351,11 +366,10 @@
 .smp-disk-percent {
   font-size: 10.5px;
   font-weight: bold;
-  color: #eeeeee;
 }
 
 .smp-disk-bar-bg {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: rgba(255, 255, 255, 0.1);
   border-radius: 3px;
   height: 5px;
   width: 220px;
@@ -368,7 +382,7 @@
 
 .smp-disk-detail {
   font-size: 9.5px;
-  color: #9a9a9a;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 /* --- Temperature Sensors List --- */
@@ -384,24 +398,23 @@
 
 .smp-sensor-name {
   font-size: 10.5px;
-  color: #9a9a9a;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .smp-sensor-value {
   font-size: 10.5px;
   font-weight: bold;
-  color: #eeeeee;
 }
 
 .smp-no-sensors {
   font-size: 10px;
-  color: #888888;
+  color: rgba(255, 255, 255, 0.6);
   padding: 2px 0;
 }
 
 /* Threshold classes for bars */
 .smp-progress-normal {
-  background-color: #3584e4;
+  background-color: #78aeed;
 } /* Blue */
 .smp-progress-warning {
   background-color: #f8e45c;
@@ -422,21 +435,12 @@
   spacing: 8px;
 }
 
+/* Colors, hover, press and the focus ring all come from the shell's stock
+   `button` class the footer buttons also carry; this only fits the shape to
+   the cards. */
 .smp-footer-button {
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.07);
   border-radius: 5px;
   padding: 6px 0;
-  transition: background-color 150ms ease;
-}
-
-.smp-footer-button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.smp-footer-button:active {
-  background-color: rgba(255, 255, 255, 0.18);
 }
 
 /* Compact icon-only button (Refresh) */
@@ -452,11 +456,153 @@
 
 .smp-footer-btn-icon {
   icon-size: 14px;
-  color: #eeeeee;
 }
 
 .smp-footer-btn-label {
   font-size: 11px;
   font-weight: bold;
-  color: #eeeeee;
+}
+
+/* ============================================
+   Light style
+   ============================================
+
+   Applies under `smp-light`, which the extension sets on the indicator and
+   its menu while the shell uses its light style. Only colors change here.
+   Accents are the GNOME palette's deeper tones, each holding at least 4.5:1
+   against the white card. */
+
+/* --- Panel Status Indicator --- */
+
+/* The top bar is light in this style... */
+.smp-light .smp-label-warning {
+  color: #9c6e03;
+}
+
+.smp-light .smp-label-critical {
+  color: #c01c28;
+}
+
+/* ...except in the overview, where it turns transparent over the wallpaper
+   and the shell switches its text back to light. */
+#panel:overview .smp-light .smp-label-warning {
+  color: #f8e45c;
+}
+
+#panel:overview .smp-light .smp-label-critical {
+  color: #ff7b63;
+}
+
+/* --- Cards --- */
+
+/* Back to the shell's own light popup color under the darkened menu above.
+   The class sits on the menu box itself, hence the compound selector. */
+.smp-dropdown-menu.smp-light {
+  background-color: #fafafb;
+}
+
+/* The shell's light notification card: white with a hairline edge. */
+.smp-light .smp-card {
+  background-color: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+}
+
+/* Secondary and tertiary text, as dark-on-light versions of the same tiers. */
+.smp-light .smp-core-label,
+.smp-light .smp-detail-title,
+.smp-light .smp-swap-title,
+.smp-light .smp-disk-detail,
+.smp-light .smp-sensor-name {
+  color: rgba(34, 34, 38, 0.7);
+}
+
+.smp-light .smp-section-subtitle,
+.smp-light .smp-gpu-note,
+.smp-light .smp-no-sensors {
+  color: rgba(34, 34, 38, 0.65);
+}
+
+/* Bar tracks and the swap divider follow the shell slider's light trough. */
+.smp-light .smp-bar-bg,
+.smp-light .smp-mini-bar-bg,
+.smp-light .smp-swap-bar-bg,
+.smp-light .smp-disk-bar-bg {
+  background-color: rgba(34, 34, 38, 0.1);
+}
+
+.smp-light .smp-swap-box {
+  border-top: 1px solid rgba(34, 34, 38, 0.1);
+}
+
+/* --- Accent Colors --- */
+
+.smp-light .smp-color-cpu {
+  color: #1c71d8;
+}
+.smp-light .smp-color-cpu-bg {
+  background-color: #1c71d8;
+}
+
+.smp-light .smp-color-gpu {
+  color: #0e7c86;
+}
+.smp-light .smp-color-gpu-bg {
+  background-color: #0e7c86;
+}
+
+.smp-light .smp-color-mem {
+  color: #9141ac;
+}
+.smp-light .smp-color-mem-bg {
+  background-color: #9141ac;
+}
+
+.smp-light .smp-color-disk {
+  color: #c64600;
+}
+.smp-light .smp-color-disk-bg {
+  background-color: #c64600;
+}
+
+.smp-light .smp-color-temp {
+  color: #c01c28;
+}
+.smp-light .smp-color-temp-bg {
+  background-color: #c01c28;
+}
+
+.smp-light .smp-color-net {
+  color: #1b8553;
+}
+.smp-light .smp-color-net-bg {
+  background-color: #1b8553;
+}
+
+.smp-light .smp-net-speed-value {
+  color: #1b8553;
+}
+
+.smp-light .smp-gpu-badge {
+  color: #0e7c86;
+  background-color: rgba(14, 124, 134, 0.12);
+}
+
+.smp-light .smp-disk-badge {
+  color: #c64600;
+  background-color: rgba(198, 70, 0, 0.12);
+}
+
+.smp-light .smp-swap-bar-fill {
+  background-color: #9141ac;
+}
+
+/* Threshold classes for bars */
+.smp-light .smp-progress-normal {
+  background-color: #1c71d8;
+}
+.smp-light .smp-progress-warning {
+  background-color: #e5a50a;
+}
+.smp-light .smp-progress-critical {
+  background-color: #c01c28;
 }

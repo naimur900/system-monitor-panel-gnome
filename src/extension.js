@@ -20,6 +20,7 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 import { PANEL_METRICS, sanitizePanelOrder } from './panelMetrics.js';
+import { UpdateNotice } from './updateNotice.js';
 
 
 /* ── Helpers ──────────────────────────────────── */
@@ -2152,8 +2153,10 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
     }
 
     _makeButton(iconName, labelText) {
+        // `button` is the shell's stock button class, so the footer takes its
+        // colors, hover, press and focus ring from the shell theme.
         const btn = new St.Button({
-            style_class: 'smp-footer-button',
+            style_class: 'button smp-footer-button',
             x_expand: true,
             can_focus: true,
             reactive: true,
@@ -2168,7 +2171,7 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
 
     _makeIconButton(iconName, accessibleName) {
         const btn = new St.Button({
-            style_class: 'smp-footer-button smp-footer-icon-button',
+            style_class: 'button smp-footer-button smp-footer-icon-button',
             can_focus: true,
             reactive: true,
             track_hover: true,
@@ -2201,6 +2204,21 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
 
 
 /* ── Panel Indicator ──────────────────────────── */
+
+/**
+ * The widest reading each panel slot normally shows. A slot never gets
+ * narrower than its template, so a value gaining or losing a digit doesn't
+ * shove every metric to its right along the bar. Temperature's unit is
+ * swapped to match the setting in _applySettings().
+ */
+const PANEL_WIDTH_TEMPLATES = {
+    cpu: '100%',
+    gpu: '100%',
+    memory: '100%',
+    disk: '100%',
+    temperature: '100°C',
+    network: '↓999K ↑999K',
+};
 
 const SystemMonitorIndicator = GObject.registerClass(
 class SystemMonitorIndicator extends PanelMenu.Button {
@@ -2237,8 +2255,9 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         // default order, then rearranged by _applyPanelOrder().
         this._panelBoxes = new Map();
         for (const {id} of PANEL_METRICS) {
-            const box = this._createMetricBox(Gio.icon_new_for_string(
-                `${extension.path}/icons/smp-${id}-symbolic.svg`), '—');
+            const gicon = Gio.icon_new_for_string(
+                `${extension.path}/icons/smp-${id}-symbolic.svg`);
+            const box = this._createMetricBox(gicon, '—', PANEL_WIDTH_TEMPLATES[id]);
             this._panelBoxes.set(id, box);
             this._panelBox.add_child(box.container);
         }
@@ -2272,6 +2291,15 @@ class SystemMonitorIndicator extends PanelMenu.Button {
                 this._queueRefresh();
             }, this);
 
+        // Follow the shell's light/dark style. The shell's per-variant
+        // stylesheets can't share rules here: St only gives an extension's
+        // rules precedence over the theme in the file it loads, not in one
+        // that file @imports. So stylesheet.css carries both palettes and
+        // this class selects the light one.
+        St.Settings.get().connectObject(
+            'notify::color-scheme', () => this._syncStyleVariant(), this);
+        this._syncStyleVariant();
+
         // ── Initial settings + seed + timer ──
         this._applySettings();
         this._startTimer();
@@ -2293,7 +2321,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         });
     }
 
-    _createMetricBox(gicon, labelText) {
+    _createMetricBox(gicon, labelText, widthTemplate) {
         const container = new St.BoxLayout({
             style_class: 'smp-metric-box',
             y_align: Clutter.ActorAlign.CENTER,
@@ -2305,14 +2333,34 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         });
         container.add_child(icon);
 
+        // The slot takes the width of the wider of its two labels: the live
+        // reading, and a transparent copy of the template that holds the room
+        // open while the reading is shorter. Sizing by a real label rather than
+        // a pixel width keeps the reservation exact under any font, text
+        // scale or display scale.
+        const slot = new St.Widget({
+            layout_manager: new Clutter.BinLayout(),
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        container.add_child(slot);
+
+        const sizer = new St.Label({
+            text: widthTemplate,
+            style_class: 'smp-metric-label',
+            opacity: 0,
+            y_align: Clutter.ActorAlign.CENTER,
+        });
+        slot.add_child(sizer);
+
         const label = new St.Label({
             text: labelText,
             style_class: 'smp-metric-label',
+            x_align: Clutter.ActorAlign.START,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        container.add_child(label);
+        slot.add_child(label);
 
-        return {container, icon, label};
+        return {container, icon, label, sizer};
     }
 
     _buildDropdownMenu() {
@@ -2379,6 +2427,11 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         for (const box of [this._cpuBox, this._gpuBox, this._memBox, this._diskBox, this._tempBox, this._netBox])
             box.icon.visible = showIcons;
 
+        // Fahrenheit readings run into three digits all the time, so reserve
+        // the room in whichever unit is actually shown.
+        const isFahrenheit = this._settings.get_string('temperature-unit') === 'fahrenheit';
+        this._tempBox.sizer.text = isFahrenheit ? '100°F' : '100°C';
+
         this._cpuCard.visible = showCpuCard;
         this._gpuCard.visible = showGpuCard;
         this._memCard.visible = showMemCard;
@@ -2390,6 +2443,21 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         this._tempNetRow.visible = showTempCard || showNetCard;
 
         this._applyPanelOrder();
+    }
+
+    /**
+     * Mark the panel slots and the dropdown with `smp-light` while the shell
+     * uses its light style. The menu lives outside the button's actor tree,
+     * so both need the class.
+     */
+    _syncStyleVariant() {
+        const light = Main.getStyleVariant() === 'light';
+        for (const actor of [this, this.menu.box]) {
+            if (light)
+                actor.add_style_class_name('smp-light');
+            else
+                actor.remove_style_class_name('smp-light');
+        }
     }
 
     /**
@@ -2636,6 +2704,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
         this.menu.disconnectObject(this);
         this._settings.disconnectObject(this);
+        St.Settings.get().disconnectObject(this);
 
         this._metrics.destroy();
         this._metrics = null;
@@ -2678,6 +2747,8 @@ export default class SystemMonitorExtension extends Extension {
 
         this._settings.connectObject(
             'changed::panel-position', () => this._applyPosition(), this);
+
+        this._updateNotice = new UpdateNotice(this, this._settings);
     }
 
     _applyPosition() {
@@ -2703,6 +2774,8 @@ export default class SystemMonitorExtension extends Extension {
 
     disable() {
         this._settings?.disconnectObject(this);
+        this._updateNotice?.destroy();
+        this._updateNotice = null;
         this._indicator?.destroy();
         this._indicator = null;
         this._settings = null;
