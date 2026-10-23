@@ -42,9 +42,9 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
   - **CPU** — overall usage plus a per-core usage grid.
   - **GPU** — one entry per card, badged `iGPU`/`dGPU`, with usage, VRAM, clock and temperature wherever the driver reports them.
   - **Memory** — used/available/free/cached/buffers breakdown and swap usage.
-  - **Disk** — combined usage plus a per-filesystem breakdown, with removable drives optionally included and badged `EXT`.
+  - **Disk** — combined usage plus a per-filesystem breakdown, with removable drives optionally included and badged `EXT`. A drive that stops answering is marked "Not responding" instead of holding up the rest.
   - **Network** — live download/upload speeds and cumulative totals since boot.
-  - **Temperature** — readings from the significant hardware sensors (CPU, GPU, chipset, motherboard, drives, Wi-Fi), one per component, with the CPU package sensor preferred for the headline value.
+  - **Temperature** — readings from the significant hardware sensors (CPU, GPU, chipset, motherboard, internal drives, Wi-Fi), one per component, with the CPU package sensor preferred for the headline value. External drives' temperatures are not read.
 - **Configurable refresh interval** (2–300 seconds).
 - **Reorderable panel items** — arrange the metrics left to right however you like.
 - **Celsius or Fahrenheit** temperature display.
@@ -149,7 +149,7 @@ This is the license required for submission to
 
 The extension runs inside the GNOME Shell compositor process, so everything it does on a timer is on the critical path for desktop responsiveness. A few consequences shape the code in [src/extension.js](src/extension.js):
 
-- **All file IO is asynchronous.** `statfs` blocks in uninterruptible sleep on a device that has stopped responding — a drive unplugged without unmounting, say — so a synchronous call would freeze the whole desktop. `query_filesystem_info_async` hands the syscall to a GIO worker thread instead, and the `/proc` and `/sys` readings go through `load_contents_async` the same way, keeping every read off the compositor thread.
+- **All file IO is asynchronous.** `statfs` blocks in uninterruptible sleep on a device that has stopped responding — a drive unplugged without unmounting, say — so a synchronous call would freeze the whole desktop. `query_filesystem_info_async` hands the syscall to a GIO worker thread instead, and the `/proc` and `/sys` readings go through `load_contents_async` the same way, keeping every read off the compositor thread. A stuck `statfs` still holds its worker thread, so each drive gets one query at a time and one second per refresh to answer; after that it is shown from its last reading as not responding.
 - **Static metadata is cached.** Sensor paths are discovered once; mount points and each device's removable flag are cached and invalidated by `GioUnix.MountMonitor`. Only the values themselves are re-read on each refresh.
 - **Nothing is collected for pixels that will not be drawn.** A metric is read only when its panel label is visible, or its card is visible and the dropdown is actually open. Dropdown rows are reused across refreshes rather than rebuilt.
 
