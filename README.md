@@ -24,15 +24,17 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 </p>
 <p align="center"><em>The at-a-glance indicators in the top panel.</em></p>
 
-## What's new in 3
+## What's new in 3.1
 
-- **Steady panel width**: each reading holds room for three digits, so the
-  indicators no longer shift along the bar as a value gains or loses one.
-- **The shell's own look**: the dropdown takes GNOME Shell's popup background,
-  card and button colors, and its text color, instead of a palette of its own.
-- **Light and dark styles**: the dropdown and the panel readings follow the
-  shell's light style as well as its dark one, with accent colors tuned to stay
-  readable in both.
+- **Stuck drives don't freeze the disk reading**: a drive that stops responding
+  is marked "Not responding", and your other drives keep updating.
+- **Steadier temperatures**: external drives' temperatures are no longer
+  checked, and a sensor that briefly fails no longer disappears until your next
+  unlock.
+- **Lighter in the background**: nothing is checked for readings you can't see,
+  like a closed dropdown or the top bar during fullscreen videos and games.
+- **Smoother unlocking**: finding your graphics card's name no longer causes a
+  brief stutter.
 
 ## Features
 

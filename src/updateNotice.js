@@ -20,12 +20,12 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
  * The release the notes below describe. Bump both together for a release
  * worth announcing; a release that leaves them alone stays quiet.
  */
-const RELEASE = '3';
+const RELEASE = '3.1';
 
 const RELEASE_NOTES = [
-    'Panel readings keep a steady width, so the indicators no longer shift along the bar as a value gains or loses a digit.',
-    'The dropdown takes the shell’s own colors for its background, cards, buttons and text.',
-    'The dropdown and the panel readings follow the shell’s light style too, with accent colors tuned to stay readable in both styles.',
+    'A drive that stops responding is now marked “Not responding” instead of freezing the disk reading, and your other drives keep updating.',
+    'Lighter in the background: nothing is checked for readings you can’t see, like a closed dropdown or the top bar during fullscreen videos and games.',
+    'Smoother unlocking: finding your graphics card’s name no longer causes a brief stutter.',
 ];
 
 /** A banner raised while the shell is still starting up is easily missed. */
