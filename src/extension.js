@@ -29,6 +29,10 @@ import { UpdateNotice } from './updateNotice.js';
 Gio._promisify(Gio.File.prototype, 'load_contents_async');
 // Makes communicate_utf8_async() awaitable; it resolves to [stdout, stderr].
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
+// For reading pci.ids a chunk at a time.
+Gio._promisify(Gio.File.prototype, 'read_async');
+Gio._promisify(Gio.InputStream.prototype, 'read_bytes_async');
+Gio._promisify(Gio.InputStream.prototype, 'close_async');
 
 const DECODER = new TextDecoder('utf-8');
 
@@ -78,9 +82,27 @@ function listSysDir(dirPath) {
 }
 
 /**
+ * The temperature channel numbers in a hwmon chip's directory listing, in
+ * order. Numbering has gaps — a chip may expose temp2_input and temp3_input
+ * with no temp1_input — and most chips (battery, charger, fans) have none, so
+ * the listing beats trying temp1…tempN by name.
+ */
+function tempChannels(files) {
+    return files
+        .map(file => /^temp(\d+)_input$/.exec(file))
+        .filter(match => match !== null)
+        .map(match => parseInt(match[1], 10))
+        .sort((a, b) => a - b);
+}
+
+/**
  * Swap an actor's `<prefix>-normal|warning|critical` state class for `state`.
  */
 function setStateClass(actor, prefix, state) {
+    // Every class change restyles the actor, and most refreshes keep the
+    // state it already has.
+    if (actor.has_style_class_name(`${prefix}-${state}`))
+        return;
     for (const s of ['normal', 'warning', 'critical'])
         actor.remove_style_class_name(`${prefix}-${s}`);
     actor.add_style_class_name(`${prefix}-${state}`);
@@ -511,40 +533,91 @@ const GPU_TEMP_LABELS = ['pkg', 'package', 'edge', 'gpu', 'die', 'core'];
 const PCI_IDS_PATHS = ['/usr/share/hwdata/pci.ids', '/usr/share/misc/pci.ids'];
 
 /**
+ * How much of pci.ids is read and searched per step; see
+ * lookupPciDeviceName().
+ */
+const PCI_IDS_CHUNK_BYTES = 64 * 1024;
+
+/**
  * Look up a device's marketing name in the pci.ids database. Returns null when
- * the database is missing or the device is unknown. Only called once per GPU,
- * the first time the card shows it; the database is ~1.5 MB, so it is never
- * kept around.
+ * the database is missing, the device is unknown, or `cancellable` fired.
+ *
+ * The database is ~1.5 MB. Searching it in one piece holds the shell's main
+ * thread for ~18 ms — a dropped frame or two, at login and every unlock — so
+ * it is read and searched 64 KB at a time, returning to the main loop in
+ * between (each step takes well under a millisecond), and reading stops once
+ * the vendor's block is behind it. Nothing of it is kept.
+ */
+async function lookupPciDeviceName(vendorId, deviceId, cancellable = null) {
+    if (!vendorId || !deviceId)
+        return null;
+
+    for (const path of PCI_IDS_PATHS) {
+        let stream;
+        try {
+            stream = await Gio.File.new_for_path(path)
+                .read_async(GLib.PRIORITY_DEFAULT, cancellable);
+        } catch (_e) {
+            continue; // not at this location
+        }
+
+        // A readable database is authoritative — stop here either way.
+        try {
+            return await searchPciIds(stream, vendorId, deviceId, cancellable);
+        } catch (_e) {
+            return null; // cancelled, or the read failed
+        } finally {
+            stream.close_async(GLib.PRIORITY_DEFAULT, null).catch(() => {});
+        }
+    }
+    return null;
+}
+
+/**
+ * Search an open pci.ids stream for one device's name, or null.
  *
  * Format: vendor lines start at column 0 ("8086  Intel Corporation"), device
  * lines belong to the vendor block above them and are indented by one tab
  * ("\t9b41  CometLake-U GT2 [UHD Graphics]"). Subdevice lines use two tabs and
  * can never match a "\t<id>  " prefix.
  */
-async function lookupPciDeviceName(vendorId, deviceId) {
-    if (!vendorId || !deviceId)
-        return null;
+async function searchPciIds(stream, vendorId, deviceId, cancellable) {
+    let rest = new Uint8Array();
+    let inVendor = false;
 
-    for (const path of PCI_IDS_PATHS) {
-        const data = await readFile(path);
-        if (data === null)
-            continue;
+    for (;;) {
+        const bytes = await stream.read_bytes_async(
+            PCI_IDS_CHUNK_BYTES, GLib.PRIORITY_DEFAULT, cancellable);
+        const atEnd = bytes.get_size() === 0;
 
-        let inVendor = false;
-        for (const line of data.split('\n')) {
+        // Only complete lines are searched; a partial last line waits for
+        // the next chunk. A newline byte never occurs inside a multi-byte
+        // character, so cutting there keeps the UTF-8 intact.
+        let data = rest;
+        if (!atEnd) {
+            const chunk = bytes.toArray();
+            data = new Uint8Array(rest.length + chunk.length);
+            data.set(rest);
+            data.set(chunk, rest.length);
+        }
+        const cut = atEnd ? data.length : data.lastIndexOf(0x0a) + 1;
+        rest = data.subarray(cut);
+
+        for (const line of DECODER.decode(data.subarray(0, cut)).split('\n')) {
             if (line.length === 0 || line.startsWith('#'))
                 continue;
             if (!line.startsWith('\t')) {
                 if (inVendor)
-                    break; // left our vendor's block
+                    return null; // left our vendor's block
                 inVendor = line.startsWith(`${vendorId}  `);
             } else if (inVendor && line.startsWith(`\t${deviceId}  `)) {
                 return line.slice(deviceId.length + 3).trim();
             }
         }
-        return null; // a readable database is authoritative — stop here
+
+        if (atEnd)
+            return null;
     }
-    return null;
 }
 
 /**
@@ -601,6 +674,7 @@ class SystemMetrics {
         this._mounts = null;
         this._externalCache = new Map();
         this._gpus = null;
+        this._gpuNames = new Map(); // "vendor:device" PCI id → display name
 
         // Previous idle-residency sample per GPU, for drivers (i915/xe) that
         // expose cumulative sleep time instead of a busy percentage.
@@ -1012,16 +1086,14 @@ class SystemMetrics {
         const sensors = [];
 
         // One sensor per component; drives and GPUs can be several distinct
-        // devices, so they dedupe per chip instead.
+        // devices, so they dedupe per chip instead. A temperature is only
+        // read for a component nothing represents yet: that read can run an
+        // ACPI method or send a device a command, where a type or label is a
+        // static string.
         const seen = new Set();
-        const takeSensor = (category, basePath) => {
-            const key = category === 'drive' || category === 'gpu'
+        const sensorKey = (category, basePath) =>
+            category === 'drive' || category === 'gpu'
                 ? `${category}:${basePath}` : category;
-            if (seen.has(key))
-                return false;
-            seen.add(key);
-            return true;
-        };
 
         // Repeated components get a numeric suffix ("NVMe SSD 2") so the
         // display layer, which collapses duplicate names, keeps them apart.
@@ -1040,9 +1112,6 @@ class SystemMetrics {
                 continue;
 
             const basePath = `/sys/class/thermal/${name}`;
-            if ((await readFile(`${basePath}/temp`)) === null)
-                continue;
-
             const typeStr = await readFile(`${basePath}/type`);
             const raw = typeStr ? typeStr.trim() : name;
 
@@ -1051,8 +1120,10 @@ class SystemMetrics {
                 fallbackZones.push({basePath, raw});
                 continue;
             }
-            if (!takeSensor(category, basePath))
+            const key = sensorKey(category, basePath);
+            if (seen.has(key) || (await readFile(`${basePath}/temp`)) === null)
                 continue;
+            seen.add(key);
 
             sensors.push({
                 path: `${basePath}/temp`,
@@ -1072,12 +1143,11 @@ class SystemMetrics {
                 await this._isExternalDrive(basePath))
                 continue;
 
-            // hwmon numbering is not contiguous — a chip may expose temp2_input
-            // and temp3_input with no temp1_input — so skip gaps rather than
-            // stopping at the first one.
-            for (let i = 1; i <= 16; i++) {
+            const files = listSysDir(basePath);
+            for (const i of tempChannels(files)) {
                 const path = `${basePath}/temp${i}_input`;
-                const labelStr = await readFile(`${basePath}/temp${i}_label`);
+                const labelStr = files.includes(`temp${i}_label`)
+                    ? await readFile(`${basePath}/temp${i}_label`) : null;
 
                 // The channel label decides where a labelled chip like
                 // coretemp is concerned (package vs per-core); the chip name
@@ -1093,10 +1163,10 @@ class SystemMetrics {
 
                 // Probe readability before claiming the component, so a dead
                 // channel does not block a working sibling from representing it.
-                if ((await readFile(path)) === null)
+                const key = sensorKey(category, basePath);
+                if (seen.has(key) || (await readFile(path)) === null)
                     continue;
-                if (!takeSensor(category, basePath))
-                    continue;
+                seen.add(key);
 
                 sensors.push({
                     path,
@@ -1110,6 +1180,8 @@ class SystemMetrics {
         // classifier does not know. Readable thermal zones beat an empty card.
         if (sensors.length === 0) {
             for (const {basePath, raw} of fallbackZones) {
+                if ((await readFile(`${basePath}/temp`)) === null)
+                    continue;
                 sensors.push({
                     path: `${basePath}/temp`,
                     name: displayName(raw),
@@ -1165,9 +1237,12 @@ class SystemMetrics {
         sensors.forEach((sensor, i) => {
             const tempStr = readings[i];
             if (tempStr === null) {
-                // Sensor went away (module unloaded, device unplugged) —
+                // A sensor still listed in sysfs failed in passing — a device
+                // mid-reset, say — so only this reading is skipped. One gone
+                // from sysfs went away (module unloaded, device unplugged):
                 // rebuild the path list on the next refresh.
-                stale = true;
+                if (!GLib.file_test(sensor.path, GLib.FileTest.EXISTS))
+                    stale = true;
                 return;
             }
 
@@ -1236,38 +1311,54 @@ class SystemMetrics {
      * lower channel.
      */
     async _findGpuTempPath(hwmonBase) {
-        let bestPath = null;
-        let bestRank = Infinity;
-
-        for (let i = 1; i <= 8; i++) {
-            const path = `${hwmonBase}/temp${i}_input`;
-            if ((await readFile(path)) === null)
-                continue;
-
-            const labelStr = await readFile(`${hwmonBase}/temp${i}_label`);
+        // Rank by label first — a static string — then probe in rank order,
+        // so normally only the winning channel's temperature is read.
+        const files = listSysDir(hwmonBase);
+        const channels = [];
+        for (const i of tempChannels(files)) {
+            const labelStr = files.includes(`temp${i}_label`)
+                ? await readFile(`${hwmonBase}/temp${i}_label`) : null;
             const label = labelStr ? labelStr.trim().toLowerCase() : '';
             const known = GPU_TEMP_LABELS.indexOf(label);
-            const rank = known !== -1 ? known
-                : GPU_TEMP_LABELS.length + (label === '' ? 0 : 1);
-
-            if (rank < bestRank) {
-                bestRank = rank;
-                bestPath = path;
-                if (rank === 0)
-                    break; // nothing can outrank the package sensor
-            }
+            channels.push({
+                path: `${hwmonBase}/temp${i}_input`,
+                rank: known !== -1 ? known
+                    : GPU_TEMP_LABELS.length + (label === '' ? 0 : 1),
+            });
         }
 
-        return bestPath;
+        // A stable sort, so ties keep the lower channel first.
+        channels.sort((a, b) => a.rank - b.rank);
+        for (const {path} of channels) {
+            if ((await readFile(path)) !== null)
+                return path;
+        }
+        return null;
+    }
+
+    /**
+     * A GPU's display name, looked up in pci.ids once per device id and
+     * remembered, so rediscovery — an eGPU replugged, a driver hiccup — and a
+     * second card of the same model do not search the database again.
+     */
+    async _gpuName(vendorId, deviceId, vendor, cancellable) {
+        const key = `${vendorId}:${deviceId}`;
+        let name = this._gpuNames.get(key);
+        if (name === undefined) {
+            name = friendlyGpuName(
+                await lookupPciDeviceName(vendorId, deviceId, cancellable),
+                vendor);
+            this._gpuNames.set(key, name);
+        }
+        return name;
     }
 
     /**
      * Locate every GPU under /sys/class/drm and work out, per device, which
      * files (if any) report usage, VRAM, temperature and clock frequency.
-     * Returns [{ card, driver, vendor, vendorId, deviceId, integrated, name,
-     * busyPath, idlePath, vramUsedPath, vramTotalPath, tempPath, freqPath,
-     * freqDivisor, freqMaxMhz, useNvidiaSmi }], with name left null for
-     * getGpuUsage() to look up.
+     * Returns [{ card, name, integrated, driver, busyPath, idlePath,
+     * vramUsedPath, vramTotalPath, tempPath, freqPath, freqDivisor,
+     * freqMaxMhz, useNvidiaSmi }].
      *
      * Vendor interfaces differ:
      *  - amdgpu/radeon publish gpu_busy_percent and mem_info_vram_* directly,
@@ -1279,7 +1370,7 @@ class SystemMetrics {
      *    come from one `nvidia-smi` query per refresh when the tool exists.
      *  - nouveau exposes only a hwmon temperature.
      */
-    async _discoverGpus() {
+    async _discoverGpus(cancellable) {
         const gpus = [];
         const nvidiaSmi = GLib.find_program_in_path('nvidia-smi') !== null;
 
@@ -1321,10 +1412,8 @@ class SystemMetrics {
                 card: cardName,
                 driver,
                 vendor,
-                vendorId,
-                deviceId,
                 integrated,
-                name: null,           // looked up once the card asks
+                name: await this._gpuName(vendorId, deviceId, vendor, cancellable),
                 busyPath: null,       // reads a 0–100 percentage directly
                 idlePath: null,       // reads cumulative idle milliseconds
                 vramUsedPath: null,   // bytes
@@ -1430,31 +1519,17 @@ class SystemMetrics {
      * with null for anything the hardware or driver does not report. busy is
      * also null on the first sample of an idle-residency GPU — a delta needs
      * two reads.
-     *
-     * Names are looked up only `withNames`, as only the card shows them and
-     * each lookup parses pci.ids on the shell's main thread (~20 ms).
-     * Discovery runs at every enable — every unlock, too — so a lookup there
-     * would be paid whether or not the dropdown is ever opened. Until then a
-     * GPU goes by its vendor's name.
      */
-    async getGpuUsage(cancellable = null, withNames = false) {
-        this._gpus ??= this._discoverGpus();
+    async getGpuUsage(cancellable = null) {
+        this._gpus ??= this._discoverGpus(cancellable);
         const gpus = await this._gpus;
-
-        if (withNames) {
-            for (const gpu of gpus) {
-                gpu.name ??= friendlyGpuName(
-                    await lookupPciDeviceName(gpu.vendorId, gpu.deviceId),
-                    gpu.vendor);
-            }
-        }
 
         const now = GLib.get_monotonic_time();
         let stale = false;
 
         const results = await Promise.all(gpus.map(async gpu => {
             const result = {
-                name: gpu.name ?? friendlyGpuName(null, gpu.vendor),
+                name: gpu.name,
                 integrated: gpu.integrated,
                 driver: gpu.driver,
                 usageSupported: gpu.usageSupported,
@@ -1623,6 +1698,7 @@ class SystemMetrics {
         // regardless; forgetting it here means the next enable() asks again.
         this._pendingFsQueries.clear();
         this._lastUsage.clear();
+        this._gpuNames.clear();
     }
 }
 
@@ -2517,13 +2593,29 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             'notify::color-scheme', () => this._syncStyleVariant(), this);
         this._syncStyleVariant();
 
+        // The top bar hides while a fullscreen app covers its monitor, and
+        // nothing on it is read meanwhile; catch up as soon as it is back.
+        this._missedRefresh = false;
+        this.connectObject('notify::mapped', () => {
+            if (this.mapped && this._missedRefresh) {
+                this._missedRefresh = false;
+                this._seedAndRefresh();
+            }
+        }, this);
+
         // ── Initial settings + seed + timer ──
         this._applySettings();
         this._startTimer();
+        this._seedAndRefresh();
+    }
 
-        // Seed the CPU, GPU and network deltas, then do the first real
-        // refresh shortly after — a delta needs two samples. Results are
-        // discarded; the timed refresh reports any real failure.
+    /**
+     * Seed the CPU, GPU and network deltas, then do a real refresh shortly
+     * after — a delta needs two samples, and a stale first one would report
+     * an average over the whole gap. Results are discarded; the refresh
+     * reports any real failure.
+     */
+    _seedAndRefresh() {
         this._metrics.getCpuUsage().catch(() => {});
         this._metrics.getNetworkSpeed().catch(() => {});
         // GPU display is off by default; don't touch its sysfs tree (or spawn
@@ -2531,6 +2623,9 @@ class SystemMonitorIndicator extends PanelMenu.Button {
         if (this._settings.get_boolean('show-gpu') ||
             this._settings.get_boolean('show-gpu-card'))
             this._metrics.getGpuUsage(this._cancellable).catch(() => {});
+
+        if (this._seedTimeoutId)
+            GLib.source_remove(this._seedTimeoutId);
         this._seedTimeoutId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 700, () => {
             this._seedTimeoutId = null;
             this._refreshAll();
@@ -2725,7 +2820,9 @@ class SystemMonitorIndicator extends PanelMenu.Button {
     }
 
     _isVisible(box, card) {
-        return box.container.visible || (card.visible && this.menu.isOpen);
+        // Not mapped while a fullscreen app hides the top bar.
+        return (box.container.visible && this.mapped) ||
+            (card.visible && this.menu.isOpen);
     }
 
     _shouldUpdateCard(card) {
@@ -2743,6 +2840,9 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             ['temperature', this._tempBox, this._tempCard, () => this._refreshTemperature()],
             ['network', this._netBox, this._netCard, () => this._refreshNetwork()],
         ];
+
+        if (!this.mapped)
+            this._missedRefresh = true;
 
         for (const [name, box, card, refresh] of metrics) {
             if (!this._isVisible(box, card))
@@ -2780,8 +2880,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
 
         let gpus;
         try {
-            gpus = await this._metrics.getGpuUsage(
-                this._cancellable, this._shouldUpdateCard(this._gpuCard));
+            gpus = await this._metrics.getGpuUsage(this._cancellable);
         } finally {
             this._gpuQueryPending = false;
         }
@@ -2925,6 +3024,7 @@ class SystemMonitorIndicator extends PanelMenu.Button {
             this._queuedRefreshId = null;
         }
 
+        this.disconnectObject(this);
         this.menu.disconnectObject(this);
         this._settings.disconnectObject(this);
         St.Settings.get().disconnectObject(this);
