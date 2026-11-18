@@ -15,7 +15,12 @@
    menu and cards sit just below the shell's popup and notification card
    grays. The footer uses the shell's stock button, and primary text inherits
    the menu's foreground. Only the surfaces, dimmer text tiers, bar tracks
-   and accents are spelled out per variant. */
+   and accents are spelled out per variant.
+
+   Font sizes are in pt, like the shell theme's, so they follow the
+   accessibility text-scaling setting; St keeps px font sizes fixed. At the
+   default scale 1pt is 4/3px (7.5pt is 10px). Widths that hold text are in em
+   for the same reason. Icons, bars and spacing stay in px, as the shell's do. */
 
 /* --- Panel Status Indicator --- */
 
@@ -41,7 +46,7 @@
 /* Tabular figures give every digit the same advance, so a reading never
    outgrows the slot reserved for it by its width template in extension.js. */
 .smp-metric-label {
-  font-size: 11px;
+  font-size: 8.25pt;
   font-weight: bold;
   margin-top: 1px;
   font-feature-settings: "tnum";
@@ -108,18 +113,18 @@
 }
 
 .smp-card-title {
-  font-size: 11.5px;
+  font-size: 8.625pt;
   font-weight: bold;
 }
 
 .smp-card-value {
-  font-size: 12px;
+  font-size: 9pt;
   font-weight: bold;
 }
 
 /* Small section label used inside cards (e.g. "Per-core usage") */
 .smp-section-subtitle {
-  font-size: 9px;
+  font-size: 6.75pt;
   font-weight: bold;
   color: rgba(255, 255, 255, 0.6);
   padding-top: 4px;
@@ -205,9 +210,9 @@
 }
 
 .smp-core-label {
-  font-size: 10px;
+  font-size: 7.5pt;
   color: rgba(255, 255, 255, 0.7);
-  width: 42px;
+  width: 4.2em; /* 42px at the default scale */
 }
 
 .smp-mini-bar-bg {
@@ -223,9 +228,9 @@
 }
 
 .smp-core-value {
-  font-size: 10px;
+  font-size: 7.5pt;
   font-weight: bold;
-  width: 30px;
+  width: 3em; /* 30px at the default scale */
   text-align: right;
 }
 
@@ -245,12 +250,12 @@
 }
 
 .smp-gpu-name {
-  font-size: 10.5px;
+  font-size: 7.875pt;
 }
 
 /* Marks a GPU as integrated (iGPU) or dedicated (dGPU) */
 .smp-gpu-badge {
-  font-size: 8px;
+  font-size: 6pt;
   font-weight: bold;
   color: #4dd0e1;
   background-color: rgba(77, 208, 225, 0.15);
@@ -259,13 +264,13 @@
 }
 
 .smp-gpu-percent {
-  font-size: 10.5px;
+  font-size: 7.875pt;
   font-weight: bold;
 }
 
 /* Stands in for the usage bar when the driver reports no utilisation */
 .smp-gpu-note {
-  font-size: 9.5px;
+  font-size: 7.125pt;
   color: rgba(255, 255, 255, 0.6);
   max-width: 500px;
   padding: 1px 0;
@@ -278,18 +283,18 @@
 }
 
 .smp-detail-title {
-  font-size: 10.5px;
+  font-size: 7.875pt;
   color: rgba(255, 255, 255, 0.7);
 }
 
 .smp-detail-value {
-  font-size: 10.5px;
+  font-size: 7.875pt;
   font-weight: bold;
 }
 
 /* Network current-speed values (slightly larger, accented) */
 .smp-net-speed-value {
-  font-size: 11px;
+  font-size: 8.25pt;
   font-weight: bold;
   color: #2ec27e;
 }
@@ -307,12 +312,12 @@
 }
 
 .smp-swap-title {
-  font-size: 10px;
+  font-size: 7.5pt;
   color: rgba(255, 255, 255, 0.7);
 }
 
 .smp-swap-value {
-  font-size: 10px;
+  font-size: 7.5pt;
   font-weight: bold;
 }
 
@@ -350,12 +355,12 @@
 }
 
 .smp-disk-name {
-  font-size: 10.5px;
+  font-size: 7.875pt;
 }
 
 /* Marks a removable/USB drive in the filesystem list */
 .smp-disk-badge {
-  font-size: 8px;
+  font-size: 6pt;
   font-weight: bold;
   color: #ffa348;
   background-color: rgba(255, 163, 72, 0.15);
@@ -364,7 +369,7 @@
 }
 
 .smp-disk-percent {
-  font-size: 10.5px;
+  font-size: 7.875pt;
   font-weight: bold;
 }
 
@@ -381,7 +386,7 @@
 }
 
 .smp-disk-detail {
-  font-size: 9.5px;
+  font-size: 7.125pt;
   color: rgba(255, 255, 255, 0.7);
 }
 
@@ -397,17 +402,17 @@
 }
 
 .smp-sensor-name {
-  font-size: 10.5px;
+  font-size: 7.875pt;
   color: rgba(255, 255, 255, 0.7);
 }
 
 .smp-sensor-value {
-  font-size: 10.5px;
+  font-size: 7.875pt;
   font-weight: bold;
 }
 
 .smp-no-sensors {
-  font-size: 10px;
+  font-size: 7.5pt;
   color: rgba(255, 255, 255, 0.6);
   padding: 2px 0;
 }
@@ -459,7 +464,7 @@
 }
 
 .smp-footer-btn-label {
-  font-size: 11px;
+  font-size: 8.25pt;
   font-weight: bold;
 }
 
