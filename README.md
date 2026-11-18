@@ -54,6 +54,7 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 - **Configurable panel position** — either end of the left or right panel box.
 - **Toggle any metric** on or off, both in the panel and in the dropdown, plus an option to hide icons.
 - **Manual refresh** button in the dropdown footer.
+- **System Monitor button** in the dropdown footer, which opens GNOME System Monitor, Resources or Mission Center (whichever is installed), or an app you choose.
 
 <p align="center">
   <img src="public/img-2.png" alt="The dropdown dashboard with cards for CPU, memory, disk, temperature and network" width="600">
@@ -126,6 +127,7 @@ assigns version numbers itself.
 | `show-*-card`                                                  | on                                                       | Dropdown card for each metric                             |
 | `show-external-disks`                                          | off                                                      | Include removable/USB drives in the disk card             |
 | `show-icons`                                                   | on                                                       | Icons in the panel                                        |
+| `system-monitor-app`                                           | empty                                                    | Desktop ID or command for the System Monitor button; empty picks the first installed of GNOME System Monitor, Resources, Mission Center |
 
 Settings apply immediately; no reload is needed.
 

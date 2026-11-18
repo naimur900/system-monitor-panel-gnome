@@ -440,5 +440,25 @@ export default class SystemMonitorPreferences extends ExtensionPreferences {
             Gio.SettingsBindFlags.DEFAULT
         );
         displayGroup.add(iconsRow);
+
+        // ── System Monitor Button Group ──
+        const monitorGroup = new Adw.PreferencesGroup({
+            title: 'System Monitor Button',
+            description: 'The app the dropdown’s System Monitor button opens. ' +
+                'Leave empty to use the first one installed of GNOME System ' +
+                'Monitor, Resources and Mission Center.',
+        });
+        page.add(monitorGroup);
+
+        const monitorAppRow = new Adw.EntryRow({
+            title: 'App ID or command, e.g. net.nokyan.Resources.desktop',
+        });
+        settings.bind(
+            'system-monitor-app',
+            monitorAppRow,
+            'text',
+            Gio.SettingsBindFlags.DEFAULT
+        );
+        monitorGroup.add(monitorAppRow);
     }
 }

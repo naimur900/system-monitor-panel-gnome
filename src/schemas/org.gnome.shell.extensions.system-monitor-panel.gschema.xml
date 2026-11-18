@@ -133,6 +133,17 @@
       <description>Whether to show icons next to metric values in the panel.</description>
     </key>
 
+    <key name="system-monitor-app" type="s">
+      <default>''</default>
+      <summary>System Monitor app</summary>
+      <description>
+        What the dropdown's System Monitor button opens: a desktop entry ID
+        such as "net.nokyan.Resources.desktop", or a command line. Empty opens
+        the first one installed of GNOME System Monitor, Resources and Mission
+        Center.
+      </description>
+    </key>
+
     <key name="last-announced-version" type="s">
       <default>''</default>
       <summary>Release the update notification last announced</summary>

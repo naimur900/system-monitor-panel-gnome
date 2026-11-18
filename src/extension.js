@@ -12,6 +12,7 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gio from 'gi://Gio';
 import GioUnix from 'gi://GioUnix';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
 
 import { Extension } from 'resource:///org/gnome/shell/extensions/extension.js';
@@ -1438,8 +1439,9 @@ class SystemMetrics {
                 // APUs (kernel 4.20+), which makes it the one APU signal that
                 // works across Ryzen generations. Missing board_info (6.7+
                 // only) and mem_info_vram_vendor (also absent on older dGPUs)
-                // are ambiguous; apu_thermal_cap exists only on the Steam
-                // Deck. Without hwmon (dpm off) the card stays dedicated.
+                // are ambiguous. Without hwmon (dpm off) there is no rail to
+                // read, so the APU-only apu_thermal_cap file (Steam Deck) stays
+                // as a backup; failing both, the card counts as dedicated.
                 if (!gpu.integrated) {
                     for (const hwmonName of listSysDir(`${base}/device/hwmon`)) {
                         const label = await readFile(
@@ -1450,6 +1452,9 @@ class SystemMetrics {
                         }
                     }
                 }
+                if (!gpu.integrated &&
+                    (await readFile(`${base}/device/apu_thermal_cap`)) !== null)
+                    gpu.integrated = true;
 
                 // sclk levels are static; the highest one is the max clock.
                 const sclk = await readFile(`${base}/device/pp_dpm_sclk`);
@@ -2419,6 +2424,18 @@ class NetworkCardItem extends St.BoxLayout {
     }
 });
 
+/**
+ * Desktop IDs the footer's System Monitor button tries, in order, when the
+ * user has not picked an app. Distros differ: Ubuntu 26.04 ships Resources in
+ * place of GNOME System Monitor, and either may come from Flatpak, which
+ * exports the same IDs.
+ */
+const SYSTEM_MONITOR_APP_IDS = [
+    'org.gnome.SystemMonitor.desktop',          // GNOME System Monitor
+    'net.nokyan.Resources.desktop',             // Resources
+    'io.missioncenter.MissionCenter.desktop',   // Mission Center
+];
+
 const FooterItem = GObject.registerClass(
 class FooterItem extends PopupMenu.PopupBaseMenuItem {
     _init(extension, indicator) {
@@ -2427,6 +2444,8 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
             can_focus: false,
             style_class: 'smp-footer',
         });
+
+        this._settings = indicator._settings;
 
         const box = new St.BoxLayout({style_class: 'smp-footer-box', x_expand: true});
         this.add_child(box);
@@ -2486,23 +2505,60 @@ class FooterItem extends PopupMenu.PopupBaseMenuItem {
         return btn;
     }
 
+    /**
+     * Open the user's chosen system monitor, or else the first installed one.
+     * Apps go through Shell.App, as the dash does: an open window is focused
+     * rather than a second instance started, and launch failures are reported
+     * by the shell itself.
+     */
     _launchSystemMonitor() {
-        // Launch through a proper app-launch context first…
+        const appSystem = Shell.AppSystem.get_default();
+        const custom = this._settings.get_string('system-monitor-app').trim();
+
+        if (custom) {
+            // A desktop ID, with or without its suffix, or else a command line.
+            const app = appSystem.lookup_app(custom) ??
+                appSystem.lookup_app(`${custom}.desktop`);
+            if (app) {
+                app.activate();
+                return;
+            }
+            if (this._launchCommand(custom))
+                return;
+            Main.notify('System Monitor',
+                `Could not open “${custom}”. Check the System Monitor App ` +
+                'setting in the extension preferences.');
+            return;
+        }
+
+        for (const id of SYSTEM_MONITOR_APP_IDS) {
+            const app = appSystem.lookup_app(id);
+            if (app) {
+                app.activate();
+                return;
+            }
+        }
+
+        // An install without a desktop entry still has the binary.
+        if (GLib.find_program_in_path('gnome-system-monitor') &&
+            this._launchCommand('gnome-system-monitor'))
+            return;
+
+        Main.notify('System Monitor',
+            'No system monitor app found. Install GNOME System Monitor or ' +
+            'Resources, or choose an app in the extension preferences.');
+    }
+
+    /** Run a command line in an app-launch context; true if it started. */
+    _launchCommand(commandLine) {
         try {
             const appInfo = Gio.AppInfo.create_from_commandline(
-                'gnome-system-monitor', 'System Monitor', Gio.AppInfoCreateFlags.NONE);
+                commandLine, null, Gio.AppInfoCreateFlags.NONE);
             appInfo.launch([], global.create_app_launch_context(0, -1));
-            return;
+            return true;
         } catch (e) {
-            // Recoverable: the spawn below is the real failure point.
-            console.debug(`System Monitor: AppInfo launch failed: ${e}`);
-        }
-        // …and fall back to a raw spawn if that fails.
-        try {
-            GLib.spawn_command_line_async('gnome-system-monitor');
-        } catch (e) {
-            Main.notify('System Monitor', 'Could not launch gnome-system-monitor.');
-            console.error('System Monitor: spawn launch failed', e);
+            console.warn(`System Monitor: could not launch "${commandLine}": ${e.message}`);
+            return false;
         }
     }
 });
