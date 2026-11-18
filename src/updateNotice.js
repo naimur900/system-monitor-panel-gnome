@@ -20,12 +20,12 @@ import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
  * The release the notes below describe. Bump both together for a release
  * worth announcing; a release that leaves them alone stays quiet.
  */
-const RELEASE = '3.1';
+const RELEASE = '3.2';
 
 const RELEASE_NOTES = [
-    'A drive that stops responding is now marked “Not responding” instead of freezing the disk reading, and your other drives keep updating.',
-    'Lighter in the background: nothing is checked for readings you can’t see, like a closed dropdown or the top bar during fullscreen videos and games.',
-    'Smoother unlocking: finding your graphics card’s name no longer causes a brief stutter.',
+    'Text now follows your text size setting (Large Text in Accessibility), in the top bar and the dropdown.',
+    'The System Monitor button now opens Resources or Mission Center when GNOME System Monitor isn’t installed, as on Ubuntu 26.04. You can also choose the app in Preferences.',
+    'Ryzen processors’ built-in graphics are now labelled iGPU, so the GPU reading shows the graphics card that’s actually working.',
 ];
 
 /** A banner raised while the shell is still starting up is easily missed. */

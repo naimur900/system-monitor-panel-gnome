@@ -24,17 +24,16 @@ A GNOME Shell extension that shows **CPU usage, memory usage, disk usage, networ
 </p>
 <p align="center"><em>The at-a-glance indicators in the top panel.</em></p>
 
-## What's new in 3.1
+## What's new in 3.2
 
-- **Stuck drives don't freeze the disk reading**: a drive that stops responding
-  is marked "Not responding", and your other drives keep updating.
-- **Steadier temperatures**: external drives' temperatures are no longer
-  checked, and a sensor that briefly fails no longer disappears until your next
-  unlock.
-- **Lighter in the background**: nothing is checked for readings you can't see,
-  like a closed dropdown or the top bar during fullscreen videos and games.
-- **Smoother unlocking**: finding your graphics card's name no longer causes a
-  brief stutter.
+- **Follows your text size**: text in the top bar and the dropdown now grows
+  with the text size setting (Large Text in Accessibility).
+- **System Monitor button works everywhere**: it opens Resources or Mission
+  Center when GNOME System Monitor isn't installed, as on Ubuntu 26.04. You can
+  also choose the app in Preferences.
+- **Correct iGPU labels on Ryzen**: Ryzen processors' built-in graphics are now
+  labelled iGPU, so the GPU reading shows the graphics card that's actually
+  working.
 
 ## Features
 
